@@ -61,7 +61,7 @@ def depth_to_array(image):
     # Apply (R + G * 256 + B * 256 * 256) / (256 * 256 * 256 - 1).
     normalized_depth = numpy.dot(array[:, :, :3], [65536.0, 256.0, 1.0])
     normalized_depth /= 16777215.0  # (256.0 * 256.0 * 256.0 - 1.0)
-    return normalized_depth
+    return normalized_depth.astype(numpy.float32)
 
 
 def depth_to_logarithmic_grayscale(image):
@@ -78,3 +78,29 @@ def depth_to_logarithmic_grayscale(image):
     logdepth *= 255.0
     # Expand to three colors.
     return numpy.repeat(logdepth[:, :, numpy.newaxis], 3, axis=2)
+
+def distance_from_center(previous_wp, current_wp, car_loc):
+    """Computes the distance of the car from the center of the lane.
+
+    Args:
+        previous_wp: Previous Waypoint
+        current_wp: Current Waypoint
+        car_loc: Car location
+    """
+
+    prev_x = previous_wp.transform.location.x
+    prev_y = previous_wp.transform.location.y
+
+    curr_x = current_wp.transform.location.x
+    curr_y = current_wp.transform.location.y
+
+    car_x = car_loc.x
+    car_y = car_loc.y
+
+    a = curr_y - prev_y
+    b = -(curr_x - prev_x)
+    c = (curr_x - prev_x) * prev_y - (curr_y - prev_y) * prev_x
+
+    d = abs(a * car_x + b * car_y + c) / (a ** 2 + b ** 2+1e-6) ** 0.5
+
+    return d
