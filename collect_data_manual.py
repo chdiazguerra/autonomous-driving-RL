@@ -323,8 +323,8 @@ class World(object):
                     break
 
         camera_bp = blueprint_library.find('sensor.camera.rgb')
-        camera_bp.set_attribute('image_size_x', str(self.args.width))
-        camera_bp.set_attribute('image_size_y', str(self.args.height))
+        camera_bp.set_attribute('image_size_x', str(self.args.cam_width))
+        camera_bp.set_attribute('image_size_y', str(self.args.cam_height))
         camera_bp.set_attribute('fov', str(self.args.fov))
         camera_bp.set_attribute('sensor_tick', str(self.args.tick))
         camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
@@ -333,8 +333,8 @@ class World(object):
         self.sensors.append(camera)
 
         depth_bp = blueprint_library.find('sensor.camera.depth')
-        depth_bp.set_attribute('image_size_x', str(self.args.width))
-        depth_bp.set_attribute('image_size_y', str(self.args.height))
+        depth_bp.set_attribute('image_size_x', str(self.args.cam_width))
+        depth_bp.set_attribute('image_size_y', str(self.args.cam_height))
         depth_bp.set_attribute('fov', str(self.args.fov))
         depth_bp.set_attribute('sensor_tick', str(self.args.tick))
         depth_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
@@ -343,8 +343,8 @@ class World(object):
         self.sensors.append(depth)
 
         semantic_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
-        semantic_bp.set_attribute('image_size_x', str(self.args.width))
-        semantic_bp.set_attribute('image_size_y', str(self.args.height))
+        semantic_bp.set_attribute('image_size_x', str(self.args.cam_width))
+        semantic_bp.set_attribute('image_size_y', str(self.args.cam_height))
         semantic_bp.set_attribute('fov', str(self.args.fov))
         semantic_bp.set_attribute('sensor_tick', str(self.args.tick))
         semantic_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
@@ -1340,7 +1340,7 @@ def game_loop(args):
         client = carla.Client(args.host, args.port)
         client.set_timeout(2000.0)
 
-        sim_world = client.get_world()
+        sim_world = client.load_world(args.map) if args.map is not None else client.get_world() #CHANGED
         #SYNC MODE
         original_settings = sim_world.get_settings()
         settings = sim_world.get_settings()
@@ -1473,19 +1473,20 @@ def main():
         default=2.2,
         type=float,
         help='Gamma correction of the camera (default: 2.2)')
-    argparser.add_argument('--map', type=str, default='Town10HD_Opt')
+    argparser.add_argument('--map', type=str, default=None, help="Load the map before starting the simulation")
     argparser.add_argument('--weather', type=str, default='ClearNoon',
                            choices=['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset',
                                     'WetNoon', 'WetSunset', 'MidRainyNoon', 'MidRainSunset',
                                     'WetCloudyNoon', 'WetCloudySunset', 'HardRainNoon',
-                                    'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'])
-    argparser.add_argument('--height', type=int, default=480)
-    argparser.add_argument('--width', type=int, default=768)
-    argparser.add_argument('--fov', type=int, default=100)
-    argparser.add_argument('--nb_vehicles', type=int, default=50)
-    argparser.add_argument('--out_folder', type=str, default='./sensor_data')
-    argparser.add_argument('--nb_frames', type=int, default=10000)
-    argparser.add_argument('--tick', type=float, default=0.5)
+                                    'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'],
+                                    help='Weather preset')
+    argparser.add_argument('--cam_height', type=int, default=288, help="Camera height")
+    argparser.add_argument('--cam_width', type=int, default=512, help="Camera width")
+    argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
+    argparser.add_argument('--nb_vehicles', type=int, default=50, help="Number of vehicles in the simulation")
+    argparser.add_argument('--out_folder', type=str, default='./sensor_data', help="Output folder")
+    argparser.add_argument('--nb_frames', type=int, default=15000, help="Number of frames to record")
+    argparser.add_argument('--tick', type=float, default=0.5, help="Sensor tick length")
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]

@@ -35,19 +35,20 @@ if __name__=='__main__':
     argparser = ArgumentParser()
     argparser.add_argument('--world-port', type=int, default=2000)
     argparser.add_argument('--host', type=str, default='localhost')
-    argparser.add_argument('--map', type=str, default='Town01')
+    argparser.add_argument('--map', type=str, default=None, help="Load the map before starting the simulation")
     argparser.add_argument('--weather', type=str, default='ClearNoon',
                            choices=['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset',
                                     'WetNoon', 'WetSunset', 'MidRainyNoon', 'MidRainSunset',
                                     'WetCloudyNoon', 'WetCloudySunset', 'HardRainNoon',
-                                    'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'])
-    argparser.add_argument('--height', type=int, default=480)
-    argparser.add_argument('--width', type=int, default=768)
-    argparser.add_argument('--fov', type=int, default=100)
-    argparser.add_argument('--nb_vehicles', type=int, default=50)
-    argparser.add_argument('--out_folder', type=str, default='./sensor_data')
-    argparser.add_argument('--nb_frames', type=int, default=10000)
-    argparser.add_argument('--tick', type=float, default=0.5)
+                                    'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'],
+                                    help='Weather preset')
+    argparser.add_argument('--cam_height', type=int, default=288, help="Camera height")
+    argparser.add_argument('--cam_width', type=int, default=512, help="Camera width")
+    argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
+    argparser.add_argument('--nb_vehicles', type=int, default=50, help="Number of vehicles in the simulation")
+    argparser.add_argument('--out_folder', type=str, default='./sensor_data', help="Output folder")
+    argparser.add_argument('--nb_frames', type=int, default=15000, help="Number of frames to record")
+    argparser.add_argument('--tick', type=float, default=0.5, help="Sensor tick length")
 
     args = argparser.parse_args()
 
@@ -129,8 +130,8 @@ if __name__=='__main__':
 
         #Create sensors
         camera_bp = blueprint_library.find('sensor.camera.rgb')
-        camera_bp.set_attribute('image_size_x', str(args.width))
-        camera_bp.set_attribute('image_size_y', str(args.height))
+        camera_bp.set_attribute('image_size_x', str(args.cam_width))
+        camera_bp.set_attribute('image_size_y', str(args.cam_height))
         camera_bp.set_attribute('fov', str(args.fov))
         camera_bp.set_attribute('sensor_tick', str(args.tick))
         camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
@@ -139,8 +140,8 @@ if __name__=='__main__':
         sensors.append(camera)
 
         depth_bp = blueprint_library.find('sensor.camera.depth')
-        depth_bp.set_attribute('image_size_x', str(args.width))
-        depth_bp.set_attribute('image_size_y', str(args.height))
+        depth_bp.set_attribute('image_size_x', str(args.cam_width))
+        depth_bp.set_attribute('image_size_y', str(args.cam_height))
         depth_bp.set_attribute('fov', str(args.fov))
         depth_bp.set_attribute('sensor_tick', str(args.tick))
         depth_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
@@ -149,8 +150,8 @@ if __name__=='__main__':
         sensors.append(depth)
 
         semantic_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
-        semantic_bp.set_attribute('image_size_x', str(args.width))
-        semantic_bp.set_attribute('image_size_y', str(args.height))
+        semantic_bp.set_attribute('image_size_x', str(args.cam_width))
+        semantic_bp.set_attribute('image_size_y', str(args.cam_height))
         semantic_bp.set_attribute('fov', str(args.fov))
         semantic_bp.set_attribute('sensor_tick', str(args.tick))
         semantic_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
