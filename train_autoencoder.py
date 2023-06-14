@@ -29,11 +29,11 @@ def main(args):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size*2, shuffle=False)
 
     # Create model
-    img_size = train_dataset[0][0].shape if img_size is None else img_size
+    img_size = tuple(train_dataset[0][0].shape[1:]) if img_size is None else img_size
     model = Autoencoder(img_size, args.emb_size, args.num_classes, args.lr)
 
     # Train model
-    trainer = pl.Trainer(callbacks=[pl.callbacks.EarlyStopping(dirpath=args.dirpath, monitor='val_loss', save_top_k=1)],
+    trainer = pl.Trainer(callbacks=[pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, monitor='val_loss', save_top_k=1)],
                          logger=args.no_logger,
                          accelerator=args.device,
                          max_epochs=args.epochs)
@@ -44,7 +44,7 @@ if __name__=='__main__':
     parser = ArgumentParser()
     parser.add_argument('--file', type=str, default='dataset.pkl', help='dataset file')
     parser.add_argument('--val_size', type=float, default=0.2, help='validation size')
-    parser.add_argument('--img_size', type=int, default='default', help='image size')
+    parser.add_argument('--img_size', type=str, default='default', help='image size')
     parser.add_argument('-no_norm', action='store_false', help='Not normalize input image')
     parser.add_argument('--emb_size', type=int, default=200, help='embedding size')
     parser.add_argument('--num_classes', type=int, default=29, help='number of semantic classes')
@@ -55,3 +55,5 @@ if __name__=='__main__':
     parser.add_argument('--dirpath', type=str, default='./bestModel', help='directory path to save best model')
     parser.add_argument('-no_logger', action='store_false', help='Not use logger')
     args = parser.parse_args()
+
+    main(args)
