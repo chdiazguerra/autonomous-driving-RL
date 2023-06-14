@@ -64,20 +64,19 @@ def depth_to_array(image):
     return normalized_depth.astype(numpy.float32)
 
 
-def depth_to_logarithmic_grayscale(image):
+def depth_to_logarithmic_grayscale(normalized_depth):
     """
     Convert an image containing CARLA encoded depth-map to a logarithmic
     grayscale image array.
     "max_depth" is used to omit the points that are far enough.
     """
-    normalized_depth = depth_to_array(image)
     # Convert to logarithmic depth.
     logdepth = numpy.ones(normalized_depth.shape) + \
         (numpy.log(normalized_depth) / 5.70378)
     logdepth = numpy.clip(logdepth, 0.0, 1.0)
     logdepth *= 255.0
     # Expand to three colors.
-    return numpy.repeat(logdepth[:, :, numpy.newaxis], 3, axis=2)
+    return logdepth.astype(numpy.uint8)
 
 def distance_from_center(previous_wp, current_wp, car_loc):
     """Computes the distance of the car from the center of the lane.

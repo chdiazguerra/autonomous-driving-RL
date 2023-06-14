@@ -145,7 +145,8 @@ try:
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
-from utils import to_rgb_array, depth_to_array, labels_to_array, distance_from_center
+import cv2
+from utils import to_rgb_array, depth_to_array, labels_to_array, distance_from_center, depth_to_logarithmic_grayscale
 
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
@@ -166,7 +167,7 @@ def get_actor_display_name(actor, truncate=250):
 #ADDED
 SENSOR_TYPE = {'CAMERA': 0, 'DEPTH': 1, 'SEMANTIC': 2, 'OBSTACLE': 3}
 
-def sensor_callback(sensor_data, sensor_queue, sensor_type, save_path = None):
+def sensor_callback(sensor_data, sensor_queue, sensor_type, save_path = None, save_numpy = False):
     if sensor_type == SENSOR_TYPE['OBSTACLE']:
         actor = sensor_data.other_actor
         if 'vehicle' in actor.type_id:
@@ -174,13 +175,18 @@ def sensor_callback(sensor_data, sensor_queue, sensor_type, save_path = None):
     else:
         array = image_to_array(sensor_data, sensor_type)
         sensor_queue.put((sensor_data.frame, sensor_type))
-        np.save(save_path + '/%08d' % sensor_data.frame, array)
+        if save_numpy:
+            np.save(save_path + '/%08d' % sensor_data.frame, array)
+        else:
+            if sensor_type == SENSOR_TYPE['CAMERA']:
+                array = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(save_path + '/%08d.png' % sensor_data.frame, array)
 
 def image_to_array(image, type_):
     if type_ == SENSOR_TYPE['CAMERA']:
         array = to_rgb_array(image)
     elif type_ == SENSOR_TYPE['DEPTH']:
-        array = depth_to_array(image)
+        array = depth_to_logarithmic_grayscale(depth_to_array(image))
     elif type_ == SENSOR_TYPE['SEMANTIC']:
         array = labels_to_array(image)
     return array
@@ -329,7 +335,7 @@ class World(object):
         camera_bp.set_attribute('sensor_tick', str(self.args.tick))
         camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
         camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.player)
-        camera.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['CAMERA'], camera_path))
+        camera.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['CAMERA'], camera_path, self.args.np))
         self.sensors.append(camera)
 
         depth_bp = blueprint_library.find('sensor.camera.depth')
@@ -339,7 +345,7 @@ class World(object):
         depth_bp.set_attribute('sensor_tick', str(self.args.tick))
         depth_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
         depth = self.world.spawn_actor(depth_bp, depth_transform, attach_to=self.player)
-        depth.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['DEPTH'], depth_path))
+        depth.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['DEPTH'], depth_path, self.args.np))
         self.sensors.append(depth)
 
         semantic_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
@@ -349,7 +355,7 @@ class World(object):
         semantic_bp.set_attribute('sensor_tick', str(self.args.tick))
         semantic_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
         semantic = self.world.spawn_actor(semantic_bp, semantic_transform, attach_to=self.player)
-        semantic.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['SEMANTIC'], semantic_path))
+        semantic.listen(lambda data: sensor_callback(data, self.sensor_queue, SENSOR_TYPE['SEMANTIC'], semantic_path, self.args.np))
         self.sensors.append(semantic)
 
         obstacle_bp = blueprint_library.find('sensor.other.obstacle')
@@ -1473,6 +1479,7 @@ def main():
         default=2.2,
         type=float,
         help='Gamma correction of the camera (default: 2.2)')
+    #ADDED
     argparser.add_argument('--map', type=str, default=None, help="Load the map before starting the simulation")
     argparser.add_argument('--weather', type=str, default='ClearNoon',
                            choices=['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset',
@@ -1480,13 +1487,15 @@ def main():
                                     'WetCloudyNoon', 'WetCloudySunset', 'HardRainNoon',
                                     'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'],
                                     help='Weather preset')
-    argparser.add_argument('--cam_height', type=int, default=288, help="Camera height")
-    argparser.add_argument('--cam_width', type=int, default=512, help="Camera width")
+    argparser.add_argument('--cam_height', type=int, default=256, help="Camera height")
+    argparser.add_argument('--cam_width', type=int, default=256, help="Camera width")
     argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
-    argparser.add_argument('--nb_vehicles', type=int, default=50, help="Number of vehicles in the simulation")
+    argparser.add_argument('--nb_vehicles', type=int, default=40, help="Number of vehicles in the simulation")
     argparser.add_argument('--out_folder', type=str, default='./sensor_data', help="Output folder")
-    argparser.add_argument('--nb_frames', type=int, default=15000, help="Number of frames to record")
+    argparser.add_argument('--nb_frames', type=int, default=30000, help="Number of frames to record")
     argparser.add_argument('--tick', type=float, default=0.5, help="Sensor tick length")
+    argparser.add_argument('-np', action='store_true', help='Save data as numpy arrays instead of images')
+    ###########################
     args = argparser.parse_args()
 
     args.width, args.height = [int(x) for x in args.res.split('x')]

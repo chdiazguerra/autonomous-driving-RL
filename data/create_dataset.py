@@ -45,11 +45,17 @@ def clean_data(data_dict):
     for frame, v in data_dict.items():
         if 'OBSTACLE' not in v:
             v['OBSTACLE'] = 100
-        if not all([k in v for k in ['CAMERA', 'DEPTH', 'SEMANTIC', 'OBSTACLE', 'DISTANCE', 'YAW_DIFF', 'SPEED', 'IS_JUNCTION']]):
+        if not all([k in v for k in ['CAMERA', 'DEPTH', 'SEMANTIC', 'OBSTACLE', 'DISTANCE', 'YAW_DIFF', 'IS_JUNCTION']]):
             print(f'Frame {frame} dropped. Not enough data.')
             continue
         if os.path.exists(v['CAMERA']) and os.path.exists(v['DEPTH']) and os.path.exists(v['SEMANTIC']):
-            final_data.append(v)
+            data = {}
+            data['CAMERA'] = v['CAMERA']
+            data['DEPTH'] = v['DEPTH']
+            data['SEMANTIC'] = v['SEMANTIC']
+            data['DATA'] = [v['DISTANCE'], v['YAW_DIFF'], v['OBSTACLE']]
+            data['JUNCTION'] = int(v['IS_JUNCTION'])
+            final_data.append(data)
         else:
             print(f'Frame {frame} dropped. File does not exist.')
     
