@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 SENSOR_TYPE = {'CAMERA': 0, 'DEPTH': 1, 'SEMANTIC': 2, 'OBSTACLE': 3}
 TYPE_SENSOR = {v:k for k,v in SENSOR_TYPE.items()}
 
-def get_data(data, info, folder):
+def get_data(data, info, folder, np=False):
     data_dict = {}
     for d in data:
         frame_real = d[0]
@@ -21,7 +21,8 @@ def get_data(data, info, folder):
         if type_ == SENSOR_TYPE['OBSTACLE']:
             data_dict[frame][TYPE_SENSOR[type_]] = d[2]
         else:
-            data_dict[frame][TYPE_SENSOR[type_]] = os.path.abspath(f'{folder}/{TYPE_SENSOR[type_].lower()}/{frame_real:08d}.npy')
+            name = f'{frame_real:08d}.npy' if np else f'{frame_real:08d}.png'
+            data_dict[frame][TYPE_SENSOR[type_]] = os.path.abspath(f'{folder}/{TYPE_SENSOR[type_].lower()}/{name}')
 
     for frame_real, v in info.items():
         distance, yaw_diff, speed, is_junction = v
@@ -40,7 +41,7 @@ def get_data(data, info, folder):
 
     return data_dict
 
-def clean_data(data_dict):
+def clean_data(data_dict, folder_idx):
     final_data = []
     for frame, v in data_dict.items():
         if 'OBSTACLE' not in v:
@@ -55,6 +56,7 @@ def clean_data(data_dict):
             data['SEMANTIC'] = v['SEMANTIC']
             data['DATA'] = [v['DISTANCE'], v['YAW_DIFF'], v['OBSTACLE']]
             data['JUNCTION'] = int(v['IS_JUNCTION'])
+            data['IDX'] = folder_idx
             final_data.append(data)
         else:
             print(f'Frame {frame} dropped. File does not exist.')
@@ -66,6 +68,9 @@ if __name__=='__main__':
     parser = ArgumentParser()
     parser.add_argument('--out_file', type=str, default='dataset.pkl', help='output file name')
     parser.add_argument('--folders', type=str, nargs='+', help='folders to be processed', required=True)
+    parser.add_argument('--idxs', type=int, nargs='+', default=None,
+                        help='folders class index (separate different weather conditions)')
+    parser.add_argument('-np', action='store_true', help='Camera images saved as .npy')
 
     args = parser.parse_args()
 
@@ -73,7 +78,8 @@ if __name__=='__main__':
         args.out_file += '.pkl'
 
     final_data = []
-    for folder in args.folders:
+    idxs = args.idxs if args.idxs is not None else range(len(args.folders))
+    for folder_idx, folder in zip(idxs, args.folders):
         if not os.path.exists(folder):
             raise ValueError(f'Folder {folder} does not exist')
         
@@ -82,8 +88,8 @@ if __name__=='__main__':
         data = pickle.load(open(f'{folder}/data.pkl', 'rb'))
         info = pickle.load(open(f'{folder}/info.pkl', 'rb'))
 
-        data_dict = get_data(data, info, folder)
-        final_data.extend(clean_data(data_dict))
+        data_dict = get_data(data, info, folder, args.np)
+        final_data.extend(clean_data(data_dict, folder_idx))
 
     with open(args.out_file, 'wb') as f:
         pickle.dump(final_data, f)
