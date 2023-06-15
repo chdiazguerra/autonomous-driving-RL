@@ -49,22 +49,22 @@ class Encoder(nn.Module):
         return x
     
 class Decoder(nn.Module):
-    def __init__(self, input_size=(256, 256), num_classes=23):
+    def __init__(self, input_size=(256, 256), emb_size=256, num_classes=29):
         super().__init__()
         self.y_inicial = input_size[0] // (2 ** 5)
         self.x_inicial = input_size[1] // (2 ** 5)
 
-        self.fc = nn.Linear(200, 64*self.x_inicial*self.y_inicial)
+        self.fc = nn.Linear(emb_size, 64*self.x_inicial*self.y_inicial)
 
         self.deconv1 = DeConvBlock(64, 256, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.deconv2 = DeConvBlock(256, 128, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.deconv3 = DeConvBlock(128, 64, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.deconv4 = DeConvBlock(64, 32, kernel_size=5, stride=2, padding=2, output_padding=1)
         self.deconv5 = DeConvBlock(32, 16, kernel_size=6, stride=2, padding=2, output_padding=0)
-        self.convfinal = ConvBlock(16, num_classes, kernel_size=3, stride=1, padding=1)
+        self.convfinal = nn.Conv2d(16, num_classes, kernel_size=3, stride=1, padding=1)
 
-        self.fc_data = nn.Linear(200, 3)
-        self.fc_junction = nn.Linear(200, 1)
+        self.fc_data = nn.Linear(emb_size, 3)
+        self.fc_junction = nn.Linear(emb_size, 1)
 
     def forward(self, x):
         data = self.fc_data(x)
@@ -79,13 +79,59 @@ class Decoder(nn.Module):
         x = self.convfinal(x)
         return x, data, junction
     
-
 class Autoencoder(pl.LightningModule):
-    def __init__(self, input_size=(256, 256), emb_size=200, num_classes=29, lr=1e-3, weights=(0.6, 0.2, 0.2)):
+    def __init__(self, input_size=(256, 256), emb_size=256, num_classes=29, lr=1e-3, weights=(0.8, 0.1, 0.1)):
         super().__init__()
         self.save_hyperparameters()
         self.encoder = Encoder(input_size, emb_size)
-        self.decoder = Decoder(input_size, num_classes)
+        self.decoder = Decoder(input_size, emb_size, 1)
+        self.lr = lr
+        self.weights = weights
+        self.num_classes = num_classes
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x, data, junction = self.decoder(x)
+        x = nn.functional.relu(x).squeeze(1)
+        return x, data, junction
+    
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.2, patience=20, min_lr=5e-5)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
+    
+    def training_step(self, batch, batch_idx):
+        x, sem, data, junction = batch
+        sem = sem.to(torch.float32) / (self.num_classes-1) #Normalize semantic mask
+
+        sem_hat, data_hat, junction_hat = self(x)
+        loss_sem = nn.functional.mse_loss(sem_hat, sem)
+        loss_data = nn.functional.mse_loss(data_hat, data)
+        loss_junction = nn.functional.binary_cross_entropy_with_logits(junction_hat, junction)
+        loss = self.weights[0]*loss_sem + self.weights[1]*loss_data + self.weights[2]*loss_junction
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, sem, data, junction = batch
+
+        sem = sem.to(torch.float32) / (self.num_classes-1) #Normalize semantic mask
+
+        sem_hat, data_hat, junction_hat = self(x)
+        loss_sem = nn.functional.mse_loss(sem_hat, sem)
+        loss_data = nn.functional.mse_loss(data_hat, data)
+        loss_junction = nn.functional.binary_cross_entropy_with_logits(junction_hat, junction)
+        loss = self.weights[0]*loss_sem + self.weights[1]*loss_data + self.weights[2]*loss_junction
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+
+class AutoencoderSEM(pl.LightningModule):
+    def __init__(self, input_size=(256, 256), emb_size=256, num_classes=29, lr=1e-3, weights=(0.8, 0.1, 0.1)):
+        super().__init__()
+        self.save_hyperparameters()
+        self.encoder = Encoder(input_size, emb_size)
+        self.decoder = Decoder(input_size, emb_size, num_classes)
         self.lr = lr
         self.weights = weights
 
@@ -95,8 +141,9 @@ class Autoencoder(pl.LightningModule):
         return x, data, junction
     
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.2, patience=20, min_lr=5e-5)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
     
     def training_step(self, batch, batch_idx):
         x, sem, data, junction = batch
