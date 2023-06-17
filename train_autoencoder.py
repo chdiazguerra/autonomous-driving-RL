@@ -1,3 +1,4 @@
+import os
 from argparse import ArgumentParser
 import pickle
 
@@ -10,6 +11,8 @@ from data.dataset import AutoencoderDataset
 from models.autoencoder import Autoencoder, AutoencoderSEM
 
 def main(args):
+    os.makedirs(args.dirpath, exist_ok=True)
+
     img_size = [int(x) for x in args.img_size.split('x')] if args.img_size != 'default' else None
 
     # Load data
@@ -20,9 +23,13 @@ def main(args):
     train, val = train_test_split(data, test_size=args.val_size, random_state=42,
                                    shuffle=True, stratify=[d['IDX'] for d in data])
     
+    #Save split
+    with open(args.dirpath + '/split.pkl', 'wb') as f:
+        pickle.dump({'train': train, 'val': val}, f)
+    
     # Create datasets
-    train_dataset = AutoencoderDataset(train, img_size, args.no_norm)
-    val_dataset = AutoencoderDataset(val, img_size, args.no_norm)
+    train_dataset = AutoencoderDataset(train, img_size, args.no_norm, args.low_sem)
+    val_dataset = AutoencoderDataset(val, img_size, args.no_norm, args.low_sem)
 
     # Create dataloaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -30,10 +37,11 @@ def main(args):
 
     # Create model
     img_size = tuple(train_dataset[0][0].shape[1:]) if img_size is None else img_size
+    num_classes = 14 if args.low_sem else 29
     if args.sem:
-        model = AutoencoderSEM(img_size, args.emb_size, args.num_classes, args.lr)
+        model = AutoencoderSEM(img_size, args.emb_size, num_classes, args.lr)
     else:
-        model = Autoencoder(img_size, args.emb_size, args.num_classes, args.lr)
+        model = Autoencoder(img_size, args.emb_size, num_classes, args.lr)
 
     # Train model
     trainer = pl.Trainer(callbacks=[pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, monitor='val_loss', save_top_k=1)],
@@ -47,11 +55,11 @@ def main(args):
 if __name__=='__main__':
     parser = ArgumentParser()
     parser.add_argument('--file', type=str, default='dataset.pkl', help='dataset file')
-    parser.add_argument('--val_size', type=float, default=0.2, help='validation size')
+    parser.add_argument('--val_size', type=float, default=0.1, help='validation size')
     parser.add_argument('--img_size', type=str, default='default', help='image size')
     parser.add_argument('-no_norm', action='store_false', help='Not normalize input image')
     parser.add_argument('--emb_size', type=int, default=256, help='embedding size')
-    parser.add_argument('--num_classes', type=int, default=29, help='number of semantic classes')
+    parser.add_argument('-low_sem', action='store_true', help='Use low resolution semantic segmentation (14 classes)')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size')
     parser.add_argument('--epochs', type=int, default=200, help='number of epochs')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')

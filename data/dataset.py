@@ -2,13 +2,15 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import read_image
 from torchvision import transforms
+from .utils import low_resolution_semantics
 
 
 class AutoencoderDataset(Dataset):
-    def __init__(self, data, resize=None, normalize=True):
+    def __init__(self, data, resize=None, normalize=True, low_sem=False):
         self.data = data
         self.resize = resize
         self.normalize = normalize
+        self.low_sem = low_sem
 
     def __len__(self):
         return len(self.data)
@@ -23,6 +25,9 @@ class AutoencoderDataset(Dataset):
             camera = transforms.Resize(self.resize)(camera)
             depth = transforms.Resize(self.resize)(depth)
             semantic = transforms.Resize(self.resize, transforms.InterpolationMode.NEAREST)(semantic)
+
+        if self.low_sem:
+            low_resolution_semantics(semantic)
 
         if self.normalize:
             camera = camera / 255.0

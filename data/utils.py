@@ -103,3 +103,41 @@ def distance_from_center(previous_wp, current_wp, car_loc):
     d = abs(a * car_x + b * car_y + c) / (a ** 2 + b ** 2+1e-6) ** 0.5
 
     return d
+
+def low_resolution_semantics(image):
+    """Convert a CARLA semantic image (29 classes) to a low resolution semantic
+    segmentation image (14 classes).
+    WARNING: Image is overwritten."""
+    mapping = {0: 0, #None
+     1: 1, #Roads
+     2: 2, #Sidewalks
+     3: 3, #Buildings
+     4: 4, #Walls
+     5: 5, #Fences
+     6: 6, #Poles
+     7: 7, #TrafficLights
+     8: 7, #TrafficSigns
+     9: 8, #Vegetation
+     10: 9, #Terrain -> Other
+     11: 10, #Sky (added)
+     12: 11, #Pedestrians
+     13: 11, #Riders -> Pedestrian
+     14: 12, #Cars -> Vehicles
+     15: 12, #Trucks -> Vehicles
+     16: 12, #Bus -> Vehicles
+     17: 12, #Trains -> Vehicles
+     18: 12, #Motorcycles -> Vehicles
+     19: 12, #Bicycles -> Vehicles
+     20: 9, #Static -> Other
+     21: 9, #Dynamic -> Other
+     22: 9, #Other -> Other
+     23: 9, #Water -> Other
+     24: 13, #RoadLines
+     25: 9, #Ground -> Other
+     26: 9, #Bridge -> Other
+     27: 9, #RailTrack -> Other
+     28: 9 #GuardRail -> Other
+     }
+    
+    for i in range(8, 29):
+        image[image == i] = mapping[i]
