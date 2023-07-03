@@ -15,17 +15,24 @@ def main(args):
 
     img_size = [int(x) for x in args.img_size.split('x')] if args.img_size != 'default' else None
 
-    # Load data
-    with open(args.file, 'rb') as f:
-        data = pickle.load(f)
-
-    # Split data stratify by folder (different weather conditions)
-    train, val = train_test_split(data, test_size=args.val_size, random_state=42,
-                                   shuffle=True, stratify=[d['IDX'] for d in data])
+    # Load split
+    if args.split:
+        with open(args.split, 'rb') as f:
+            split = pickle.load(f)
+        train = split['train']
+        val = split['val']
     
-    #Save split
-    with open(args.dirpath + '/split.pkl', 'wb') as f:
-        pickle.dump({'train': train, 'val': val}, f)
+    else:
+        with open(args.file, 'rb') as f:
+            data = pickle.load(f)
+
+        # Split data stratify by folder (different weather conditions)
+        train, val = train_test_split(data, test_size=args.val_size, random_state=42,
+                                    shuffle=True, stratify=[d['IDX'] for d in data])
+        
+        #Save split
+        with open(args.dirpath + '/split.pkl', 'wb') as f:
+            pickle.dump({'train': train, 'val': val}, f)
     
     # Create datasets
     train_dataset = AutoencoderDataset(train, img_size, args.no_norm, args.low_sem)
@@ -49,7 +56,7 @@ def main(args):
                          accelerator=args.device,
                          max_epochs=args.epochs,
                          default_root_dir=args.dirpath)
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(model, train_loader, val_loader, ckpt_path=args.pretrained)
     
 
 if __name__=='__main__':
@@ -67,6 +74,8 @@ if __name__=='__main__':
     parser.add_argument('--dirpath', type=str, default='./bestModel', help='directory path to save the model')
     parser.add_argument('-no_logger', action='store_false', help='Not use logger')
     parser.add_argument('-sem', action='store_true', help='Use Autoencoder with cross entropy loss for semantic segmentation')
+    parser.add_argument('--pretrained', type=str, default=None, help='pretrained model')
+    parser.add_argument('--split', type=str, default=None, help='split file')
     args = parser.parse_args()
 
     main(args)
