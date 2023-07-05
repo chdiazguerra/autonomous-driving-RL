@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 import math
-import random
 import pickle
 import os
 
@@ -23,7 +22,7 @@ if __name__=='__main__':
     argparser.add_argument('--cam_width', type=int, default=256, help="Camera width")
     argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
     argparser.add_argument('--nb_vehicles', type=int, default=40, help="Number of vehicles in the simulation")
-    argparser.add_argument('--nb_episodes', type=int, default=100, help="Number of episodes to run")
+    argparser.add_argument('--nb_episodes', type=int, default=45, help="Number of episodes to run")
     argparser.add_argument('--tick', type=float, default=0.05, help="Sensor tick length")
 
     argparser.add_argument('-sem', action='store_true', help="Use semantic segmentation")
@@ -38,6 +37,7 @@ if __name__=='__main__':
     else:
         autoencoder = Autoencoder.load_from_checkpoint(args.autoencoder_model)
 
+    autoencoder.freeze()
     encoder = autoencoder.encoder
     encoder.eval()
 
@@ -54,25 +54,26 @@ if __name__=='__main__':
 
     for episode in range(args.nb_episodes):
         print("Episode {}".format(episode))
-        obs = env.reset()
 
-        with torch.no_grad():
-            obs[0] = torch.from_numpy(obs).float().unsqueeze(0)
-            obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
-            obs[0] = encoder(obs[0]).numpy()
-
-        route_id = random.choice(range(len(routes)))
+        route_id = episode % len(routes)
 
         spawn_point = spawn_points[routes[route_id][0]]
         route = []
         for i in routes[route_id][1:]:
             route.append(spawn_points[i].location)
 
+        obs = env.reset(route_id)
+
+        obs[0] = torch.from_numpy(obs[0]).float().unsqueeze(0)
+        obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
+        obs[0] = encoder(obs[0]).numpy()
+
         env.ego_vehicle.set_transform(spawn_point)
         env.traffic_manager.ignore_lights_percentage(env.ego_vehicle, 100)
         env.traffic_manager.random_left_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.random_right_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.auto_lane_change(env.ego_vehicle, False)
+        env.traffic_manager.set_desired_speed(env.ego_vehicle, 40.)
 
         env.traffic_manager.set_path(env.ego_vehicle, route)
 
@@ -83,14 +84,15 @@ if __name__=='__main__':
         while not done:
             control = env.ego_vehicle.get_control()
             action = [control.steer, control.throttle, control.brake]
-            obs_t1, reward, done, _ = env.step(action)
+            obs_t1, reward, done, info = env.step(action)
 
-            with torch.no_grad():
-                obs_t1[0] = torch.from_numpy(obs_t1).float().unsqueeze(0)
-                obs_t1[0] = torch.permute(obs_t1[0], (0, 3, 1, 2))
-                obs_t1[0] = encoder(obs_t1[0]).numpy()
+            obs_t1[0] = torch.from_numpy(obs_t1[0]).float().unsqueeze(0)
+            obs_t1[0] = torch.permute(obs_t1[0], (0, 3, 1, 2))
+            obs_t1[0] = encoder(obs_t1[0]).numpy()
 
-            data.append([obs, action, reward, obs_t1, done])
+            data.append([obs, action, reward, obs_t1, done, info])
+
+            obs = obs_t1
 
         out_file = os.path.join(args.out_folder, f"{episode}.pkl")
         with open(out_file, 'wb') as f:

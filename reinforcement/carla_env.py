@@ -15,14 +15,15 @@ class Observation:
         self.obstacle_dist = (0, math.inf) #(Frame detected, distance)
 
 class Route:
-    def __init__(self, init, end, orientation, junc1, junc2):
+    def __init__(self, init, end, orientation, junc_ids, junc_movement):
         assert orientation in ['N', 'S', 'W', 'E']
+        assert len(junc_ids) == len(junc_movement)
         
         self.init = init
         self.end = end
         self.orientation = orientation
-        self.junc1 = junc1
-        self.junc2 = junc2
+        self.junc_ids = junc_ids #Junctions ids
+        self.junc_movement = junc_movement #Movement to take at each junction
         self.max_distance = self.distance_to_goal(self.init.location) + 100
     
     @classmethod
@@ -31,12 +32,13 @@ class Route:
                                     carla.Rotation(pitch=0.000000, yaw=179.999634, roll=0.000000))
         end = carla.Transform(carla.Location(x=118.949997, y=55.840000, z=0.300000),
                                     carla.Rotation(pitch=0.000000, yaw=179.999756, roll=0.000000))
-        junc1 = 54
-        junc2 = 332
+        
+        junc_ids = [54, 332]
+        junc_movement = [-1, 1]
 
         orientation = 'W'
 
-        return cls(init, end, orientation, junc1, junc2)
+        return cls(init, end, orientation, junc_ids, junc_movement)
 
     @classmethod
     def town1_2(cls):
@@ -45,12 +47,12 @@ class Route:
         end = carla.Transform(carla.Location(x=92.109985, y=159.949997, z=0.300000),
                                     carla.Rotation(pitch=0.000000, yaw=-90.000298, roll=0.000000))
         
-        junc1 = 194
-        junc2 = 255
+        junc_ids = [194, 255]
+        junc_movement = [-1, 1]
 
         orientation = 'N'
 
-        return cls(init, end, orientation, junc1, junc2)
+        return cls(init, end, orientation, junc_ids, junc_movement)
     
     @classmethod
     def town1_3(cls):
@@ -59,12 +61,12 @@ class Route:
         end = carla.Transform(carla.Location(x=151.119736, y=198.759842, z=0.300000),
                                     carla.Rotation(pitch=0.000000, yaw=-0.000092, roll=0.000000))
         
-        junc1 = 87
-        junc2 = 255
+        junc_ids = [87, 255]
+        junc_movement = [-1, 1]
 
         orientation = 'E'
 
-        return cls(init, end, orientation, junc1, junc2)
+        return cls(init, end, orientation, junc_ids, junc_movement)
 
     @classmethod
     def get_possibilities(cls, name):
@@ -142,7 +144,7 @@ class CarlaEnv:
         #Spectator
         self.spectator = self.world.get_spectator()
 
-    def reset(self):
+    def reset(self, route_id=None):
         self.delete_actors()
         
         self.frame = 0
@@ -153,7 +155,7 @@ class CarlaEnv:
         self.obs = Observation()
         self.intersections = 2
 
-        self.spawn_ego_vehicle()
+        self.spawn_ego_vehicle(route_id)
         self.spawn_vehicles()
         
         for _ in range(20):
@@ -162,6 +164,17 @@ class CarlaEnv:
         return self.get_observation()
     
     def step(self, action):
+        """_summary_
+
+        Args:
+            action (iterable): (steer, throttle, brake)
+
+        Returns:
+            tuple: Observation (image, movementType), where movementType is -1 for left, 0 for straight, 1 for right
+            float: Reward
+            bool: Done
+            dict: Info
+        """
         #Action = (steer, throttle, brake)
         action[0] = np.clip(action[0], -1, 1)
         action[1] = np.clip(action[1], 0, 1)
@@ -279,8 +292,10 @@ class CarlaEnv:
         transform = self.sensors[0].get_transform()
         self.spectator.set_transform(transform)
 
+        info = {'speed': kmh, 'distance_to_goal': dist_to_goal, 'distance_from_lane_center': d, 'yaw_diff': yaw_diff}
+
         #Return obs, reward, done, info
-        return self.get_observation(), reward, done, None
+        return self.get_observation(), reward, done, info
     
     def get_observation(self):
         #(RGB+DEPTH, LEFT/STRAIGHT/RIGHT)
@@ -294,10 +309,9 @@ class CarlaEnv:
 
         if waypoint.is_junction:
             junc = waypoint.get_junction()
-            if junc.id == self.route.junc1:
-                movement = -1 #LEFT
-            elif junc.id == self.route.junc2:
-                movement = 1 #RIGHT
+            if junc.id in self.route.junc_ids:
+                ind = self.route.junc_ids.index(junc.id)
+                movement = self.route.junc_movement[ind]
         
         return [image, movement]
     
@@ -313,10 +327,10 @@ class CarlaEnv:
                     self.vehicles.append(vehicle)
                     break
 
-    def spawn_ego_vehicle(self):
+    def spawn_ego_vehicle(self, route_id=None):
         while True:
             try:
-                route = self.get_route()
+                route = self.get_route(route_id)
                 self.ego_vehicle = self.world.spawn_actor(self.ego_vehicle_bp, route.init)
                 self.route = route
                 break
@@ -428,9 +442,12 @@ class CarlaEnv:
         for _ in range(20):
             self.world.tick()
 
-    def get_route(self):
+    def get_route(self, route_id=None):
         possible = Route.get_possibilities(self.map_name)
+        
+        if route_id is not None:
+            choice = possible[route_id]
+        else:
+            choice = random.choice(possible)
 
-        rand = random.choice(possible)
-
-        return rand()
+        return choice()
