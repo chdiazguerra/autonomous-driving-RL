@@ -12,7 +12,8 @@ class TD3ColDeductiveAgent:
     def __init__(self, obs_size=256, device='cpu', actor_lr=1e-3, critic_lr=1e-3,
                  pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.99,
                  tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
-                 exp_buff_size=100000, actor_buffer_size=50000, exp_prop=0.25, batch_size=64):
+                 exp_buff_size=100000, actor_buffer_size=50000, exp_prop=0.25, batch_size=64,
+                 save_path='agent.pkl'):
         assert device in ['cpu', 'cuda'], "device must be either 'cpu' or 'cuda'"
 
         self.actor = Actor(obs_size).to(device)
@@ -40,8 +41,8 @@ class TD3ColDeductiveAgent:
         self.lambda_bc = lambda_bc
         self.lambda_q = lambda_q
 
-        self.policy_clip_min = torch.tensor([-1, 0, 0]).to(device)
-        self.policy_clip_max = torch.tensor([-1, 1, 1]).to(device)
+        self.policy_clip_min = torch.tensor([-0.75, 0.0, 0.0]).to(device)
+        self.policy_clip_max = torch.tensor([0.75, 1.0, 1.0]).to(device)
 
         self.policy_clip_max_np = self.policy_clip_max.cpu().numpy()
         self.policy_clip_min_np = self.policy_clip_min.cpu().numpy()
@@ -49,12 +50,13 @@ class TD3ColDeductiveAgent:
         self.expert_buffer = ReplayBuffer(exp_buff_size, device)
         self.actor_buffer = ReplayBuffer(actor_buffer_size, device)
         self.batch_size = batch_size
-        self.exp_batch_size = int(exp_prop)*batch_size
+        self.exp_batch_size = int(exp_prop*batch_size)
         self.actual_batch_size = batch_size - self.exp_batch_size
 
         self.device = device
+        self.save_path = save_path
 
-    def select_action(self, obs, prev_action):
+    def select_action(self, obs, prev_action, eval=False):
         emb, command = obs
         emb = torch.FloatTensor(emb.reshape(1, -1)).to(self.device)
         command = torch.tensor(command).reshape(1, 1).to(self.device)
@@ -62,12 +64,13 @@ class TD3ColDeductiveAgent:
 
         with torch.no_grad():
             action = self.actor(emb, command, prev_action).cpu().numpy().flatten()
-        noise = np.random.normal(0, self.act_noise, size=action.shape)
-        action = (action + noise).clip(self.policy_clip_min_np, self.policy_clip_max_np)
-        return action
+        if not eval:
+            noise = np.random.normal(0, self.act_noise, size=action.shape)
+            action = (action + noise).clip(self.policy_clip_min_np, self.policy_clip_max_np)
+        return action.tolist()
     
     def store_transition(self, p_act, obs, act, rew, next_obs, done):
-        self.expert_buffer.store_transition((p_act, obs, act, rew, next_obs, done))
+        self.actor_buffer.store_transition((p_act, obs, act, rew, next_obs, done))
 
     def update_step(self, it, is_pretraining):
         self.actor_optimizer.zero_grad()
@@ -80,7 +83,6 @@ class TD3ColDeductiveAgent:
             act = act_exp
             rew = rew_exp
 
-            actor_loss = self._compute_bc_loss(obs_exp, act_exp, p_act_exp)
             critic_loss = self._compute_critic_loss(obs_exp, act_exp, rew_exp, next_obs_exp, done_exp)
         else:
             p_act_exp, obs_exp, act_exp, rew_exp, next_obs_exp, done_exp = self.expert_buffer.sample(self.exp_batch_size)
@@ -97,17 +99,22 @@ class TD3ColDeductiveAgent:
             next_obs = (torch.cat((next_emb_exp, next_emb_act), dim=0), torch.cat((next_command_exp, next_command_act), dim=0))
             done = torch.cat((done_exp, done_act), dim=0)
 
-            actor_loss = self.lambda_bc*self._compute_bc_loss(obs_exp, act_exp, p_act_exp)
-            actor_loss += self.lambda_a*self._compute_actor_loss(obs, p_act)
-
             critic_loss = self.lambda_q*self._compute_critic_loss(obs, act, rew, next_obs, done)
             critic_loss += self.env_w*self._compute_env_loss(obs, p_act)
 
         critic_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
         self.critic_optimizer.step()
         
         if it%self.pol_freq_update==0:
+            if is_pretraining:
+                actor_loss = self._compute_bc_loss(obs_exp, act_exp, p_act_exp)
+            else:
+                actor_loss = self.lambda_bc*self._compute_bc_loss(obs_exp, act_exp, p_act_exp)
+                actor_loss += self.lambda_a*self._compute_actor_loss(obs, p_act)
+
             actor_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
             self.actor_optimizer.step()
             # Update the frozen target models
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
@@ -154,7 +161,7 @@ class TD3ColDeductiveAgent:
             emb, rew_pred = self.env_model(emb, action)
             loss += self.gamma**i*rew_pred
             action = self.actor(emb, command, action)
-        return loss.mean()
+        return -loss.mean()
     
     def _update_env_model(self, obs, act, rew, next_obs):
         emb, _ = obs
@@ -167,6 +174,7 @@ class TD3ColDeductiveAgent:
         r_loss = F.mse_loss(reward, rew)
         loss = t_loss + r_loss
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.env_model.parameters(), 1.0)
         self.env_model_optimizer.step()
 
     def change_opt_lr(self, actor_lr, critic_lr):
@@ -178,3 +186,7 @@ class TD3ColDeductiveAgent:
     def load_exp_buffer(self, data):
         for d in data:
             self.expert_buffer.store_transition(d)
+
+    def save(self):
+        with open(self.save_path, 'wb') as f:
+            pickle.dump(self, f)

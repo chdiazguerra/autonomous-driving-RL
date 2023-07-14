@@ -21,7 +21,7 @@ class ReplayBuffer(object):
         """Add experience tuples to buffer
         
         Args:
-            data (tuple): experience replay tuple (obs, action, reward, next_obs, done)
+            data (tuple): experience replay tuple (prev_act, obs, action, reward, next_obs, done)
         """
         
         if len(self.storage) == self.max_size:
@@ -37,7 +37,7 @@ class ReplayBuffer(object):
             batch_size (int): size of sample
         """
         
-        ind = np.random.randint(0, len(self.storage), size=batch_size)
+        ind = np.random.choice(len(self.storage), size=batch_size, replace=False) #np.random.randint(0, len(self.storage), size=batch_size)
         prev_actions, embs, commands, actions, rewards, embs_, commands_, dones = [], [], [], [], [], [], [], []
 
         for i in ind: 
@@ -55,10 +55,10 @@ class ReplayBuffer(object):
 
         prev_actions = torch.FloatTensor(prev_actions).to(self.device)
         embs = torch.FloatTensor(np.concatenate(embs)).to(self.device)
-        commands = torch.LongTensor(commands).view(-1, 1).to(self.device)+1 #(-1,0,1) -> (0, 1, 2)
+        commands = torch.LongTensor(commands).view(-1, 1).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         embs_ = torch.FloatTensor(np.concatenate(embs_)).to(self.device)
-        commands_ = torch.LongTensor(commands_).reshape(-1, 1).to(self.device)+1 #(-1,0,1) -> (0, 1, 2)
+        commands_ = torch.LongTensor(commands_).reshape(-1, 1).to(self.device)
         rewards = torch.FloatTensor(rewards).reshape(-1, 1).to(self.device)
         dones = torch.FloatTensor(dones).reshape(-1, 1).to(self.device)
 

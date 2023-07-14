@@ -34,7 +34,7 @@ class Route:
                                     carla.Rotation(pitch=0.000000, yaw=179.999756, roll=0.000000))
         
         junc_ids = [54, 332]
-        junc_movement = [-1, 1]
+        junc_movement = [0, 2]
 
         orientation = 'W'
 
@@ -48,7 +48,7 @@ class Route:
                                     carla.Rotation(pitch=0.000000, yaw=-90.000298, roll=0.000000))
         
         junc_ids = [194, 255]
-        junc_movement = [-1, 1]
+        junc_movement = [0, 2]
 
         orientation = 'N'
 
@@ -62,7 +62,7 @@ class Route:
                                     carla.Rotation(pitch=0.000000, yaw=-0.000092, roll=0.000000))
         
         junc_ids = [87, 255]
-        junc_movement = [-1, 1]
+        junc_movement = [0, 2]
 
         orientation = 'E'
 
@@ -180,6 +180,11 @@ class CarlaEnv:
         action[1] = np.clip(action[1], 0, 1)
         action[2] = np.clip(action[2], 0, 1)
 
+        if action[1] >= action[2]:
+            action[2] = 0.0
+        else:
+            action[1] = 0.0
+
         control = carla.VehicleControl(steer=action[0], throttle=action[1], brake=action[2])
 
         self.ego_vehicle.apply_control(control)
@@ -229,6 +234,7 @@ class CarlaEnv:
         #Terminated by oversteering
         if self.route.is_oversteer(ego_rot):
             done = True
+            reward = -1000
         
         #Terminated by reaching the goal
         if dist_to_goal < dist_reach_goal:
@@ -305,7 +311,7 @@ class CarlaEnv:
         ego_loc = self.ego_vehicle.get_location()
         waypoint = self.map.get_waypoint(ego_loc)
 
-        movement = 0 #STRAIGHT
+        movement = 1 #STRAIGHT
 
         if waypoint.is_junction:
             junc = waypoint.get_junction()
@@ -451,3 +457,10 @@ class CarlaEnv:
             choice = random.choice(possible)
 
         return choice()
+    
+    def set_weather(self, weather_id):
+        try:
+            weather = getattr(carla.WeatherParameters, weather_id)
+            self.world.set_weather(weather)
+        except:
+            print(f"Weather {weather_id} not found")
