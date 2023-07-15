@@ -1394,11 +1394,16 @@ def game_loop(args):
             
             distance = distance_from_center(current_wp, current_wp.next(0.001)[0], car_loc)
 
-            yaw = world.player.get_transform().rotation.yaw
-            dx = current_wp.next(0.001)[0].transform.location.x - current_wp.transform.location.x
-            dy = current_wp.next(0.001)[0].transform.location.y - current_wp.transform.location.y
-            yaw_wp = math.atan2(dy, dx)
-            yaw_diff = yaw - math.degrees(yaw_wp)
+            ego_yaw = world.player.get_transform().rotation.yaw
+            wp_yaw = current_wp.transform.rotation.yaw
+
+            if ego_yaw < 0:
+                ego_yaw += 360
+            if wp_yaw < 0:
+                wp_yaw += 360
+            yaw_diff = abs(ego_yaw - wp_yaw)
+            if yaw_diff > 180:
+                yaw_diff = 360 - yaw_diff
 
             speed = world.player.get_velocity()
             speed = math.sqrt(speed.x**2 + speed.y**2 + speed.z**2)

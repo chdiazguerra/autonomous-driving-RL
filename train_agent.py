@@ -21,6 +21,7 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
     agent.change_opt_lr(1e-4, 1e-3)
 
     tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec = [], [], [], []
+    evaluate = False
 
     # avg_reward, std_reward, success_rate = test_agent(env, encoder, num_routes, weather_list, agent)
     # tr_steps_vec.append(0)
@@ -42,33 +43,21 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
     obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
     obs[0] = encoder(obs[0]).numpy()
     obs[1] = obs[1]
-    prev_act = [0.,0.,0.]
+    prev_act = [0.,0.]
+
+    without_noise = False
+    updates = 0
 
     for tr_step in range(nb_training_steps):
 
         if (tr_step+1)% (nb_training_steps / 20) == 0:
-            avg_reward, std_reward, success_rate = test_agent(env, encoder, num_routes, weather_list, agent)
-            tr_steps_vec.append(tr_step+1)
-            avg_reward_vec.append(avg_reward)
-            std_reward_vec.append(std_reward)
-            success_rate_vec.append(success_rate)
+            evaluate = True
 
-            done = False
-            episode_reward = 0
-            episode_steps = 0
+        if (tr_step+1)%200 == 0:
+            without_noise = not without_noise
+            print("Without Noise" if without_noise else "With Noise")
 
-            route_id = episode_nb%num_routes
-            weather = weather_list[(episode_nb%(num_routes*len(weather_list)))//num_routes]
-
-            env.set_weather(weather)
-            obs = env.reset(route_id)
-            obs[0] = torch.from_numpy(obs[0]).float().unsqueeze(0)
-            obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
-            obs[0] = encoder(obs[0]).numpy()
-            obs[1] = obs[1]
-            prev_act = [0.,0.,0.]
-
-        act = agent.select_action(obs, prev_act, eval=False)
+        act = agent.select_action(obs, prev_act, eval=without_noise)
         obs_t1, reward, done, _ = env.step(act)
 
         obs_t1[0] = torch.from_numpy(obs_t1[0]).float().unsqueeze(0)
@@ -77,8 +66,9 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
 
         agent.store_transition(prev_act, obs, act, reward, obs_t1, done)
 
-        if tr_step > 100:
-            agent.update_step(tr_step, False)
+        if tr_step > 100 and tr_step%5 == 0:
+            agent.update_step(updates, False)
+            updates += 1
 
         obs = obs_t1
         
@@ -93,6 +83,23 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
             episode_reward = 0
             episode_steps = 0
 
+            agent.save()
+            with open('train_data.pkl', 'wb') as f:
+                pickle.dump((tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec), f)
+
+            if evaluate:
+                avg_reward, std_reward, success_rate = test_agent(env, encoder, num_routes, weather_list, agent)
+                tr_steps_vec.append(tr_step+1)
+                avg_reward_vec.append(avg_reward)
+                std_reward_vec.append(std_reward)
+                success_rate_vec.append(success_rate)
+
+                done = False
+                episode_reward = 0
+                episode_steps = 0
+
+                evaluate = False
+
             route_id = episode_nb%num_routes
             weather = weather_list[(episode_nb%(num_routes*len(weather_list)))//num_routes]
 
@@ -101,11 +108,9 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
             obs[0] = torch.from_numpy(obs[0]).float().unsqueeze(0)
             obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
             obs[0] = encoder(obs[0]).numpy()
-            prev_act = [0.,0.,0.]
-
-            agent.save()
-            with open('train_data.pkl', 'wb') as f:
-                pickle.dump((tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec), f)
+            obs[1] = obs[1]
+            prev_act = [0.,0.]
+            agent.reset_noise()
 
 def test_agent(env, encoder, num_routes, weather_list, agent):
     ep_rewards = []
@@ -127,7 +132,7 @@ def test_agent(env, encoder, num_routes, weather_list, agent):
         done = False
         episode_reward = 0
         nb_steps = 0
-        prev_act = [0.,0.,0.]
+        prev_act = [0.,0.]
 
         while not done:
             act = agent.select_action(obs, prev_act, eval=True)
@@ -204,9 +209,9 @@ if __name__=='__main__':
             agent = pickle.load(f)
     else:
         agent = TD3ColDeductiveAgent(obs_size=256, device=args.device, actor_lr=1e-3, critic_lr=1e-3,
-                    pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.95,
+                    pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.2, gamma=0.99,
                     tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
-                    exp_buff_size=100000, actor_buffer_size=50000, exp_prop=0.25, batch_size=64,
+                    exp_buff_size=100000, actor_buffer_size=5000, exp_prop=0.25, batch_size=64,
                     save_path=args.save_path)
         
         with open(args.exp_data, 'rb') as f:

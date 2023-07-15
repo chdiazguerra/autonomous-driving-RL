@@ -140,6 +140,8 @@ class CarlaEnv:
         self.route = None
 
         self.collision_hist = []
+        self.lane_invasion_hist = []
+        self.current_movement = 1
 
         #Spectator
         self.spectator = self.world.get_spectator()
@@ -149,11 +151,13 @@ class CarlaEnv:
         
         self.frame = 0
         self.collision_hist = []
+        self.lane_invasion_hist = []
         self.vehicles = []
         self.ego_vehicle = None
         self.sensors = []
         self.obs = Observation()
         self.intersections = 2
+        self.current_movement = 1
 
         self.spawn_ego_vehicle(route_id)
         self.spawn_vehicles()
@@ -163,27 +167,27 @@ class CarlaEnv:
 
         return self.get_observation()
     
-    def step(self, action):
+    def step(self, act):
         """_summary_
 
         Args:
-            action (iterable): (steer, throttle, brake)
+            act (iterable): (steer, throttle)
 
         Returns:
-            tuple: Observation (image, movementType), where movementType is -1 for left, 0 for straight, 1 for right
+            tuple: Observation (image, movementType), where movementType is 0 for left, 1 for straight, 2 for right
             float: Reward
             bool: Done
             dict: Info
         """
         #Action = (steer, throttle, brake)
-        action[0] = np.clip(action[0], -1, 1)
-        action[1] = np.clip(action[1], 0, 1)
-        action[2] = np.clip(action[2], 0, 1)
+        action = [0.0, 0.0, 0.0]
 
-        if action[1] >= action[2]:
-            action[2] = 0.0
+        action[0] = np.clip(act[0], -1, 1)
+
+        if act[1] > 0:
+            action[1] = np.clip(act[1], 0, 1)
         else:
-            action[1] = 0.0
+            action[2] = np.clip(-act[1], 0, 1)
 
         control = carla.VehicleControl(steer=action[0], throttle=action[1], brake=action[2])
 
@@ -202,12 +206,13 @@ class CarlaEnv:
         dmin = 1.5
         dmax = 3.0
         vmin = 10
-        vmax = 60
-        vtarget = 40
-        amin = 20
-        amax = 30
+        vmax = 40
+        vtarget = 20
+        amin = 5
+        amax = 20
         obstacle_radius = 2.0
         dist_reach_goal = 2.0
+        speed_factor = 3.0
 
 
         ego_transform = self.ego_vehicle.get_transform()
@@ -230,6 +235,11 @@ class CarlaEnv:
         if len(self.collision_hist) > 0:
             done = True
             reward = -1000
+        
+        #Terminated by lane invasion
+        if len(self.lane_invasion_hist) > 0:
+            done = True
+            reward = -100
 
         #Terminated by oversteering
         if self.route.is_oversteer(ego_rot):
@@ -242,20 +252,20 @@ class CarlaEnv:
             reward = 500
         
         #Distance to goal
-        if dist_to_goal <= dmax:
+        if dist_to_goal <= self.route.max_distance-100:
             reward += 5*(1-(dist_to_goal/dmax)**beta)
         else:
             reward += -5
 
         #Speed limit
         if kmh <= vmin:
-            reward += (kmh/vmin)**beta
+            reward += speed_factor*(kmh/vmin)**beta
         elif kmh <= vtarget:
-            reward += 1
+            reward += speed_factor
         elif kmh <= vmax:
-            reward += 1 - ((kmh-vtarget)/(vmax-vtarget))**beta
+            reward += speed_factor*(1 - ((kmh-vtarget)/(vmax-vtarget))**beta)
         else:
-            reward += -1
+            reward += -speed_factor
 
         #Lane alignment
         wp = self.map.get_waypoint(ego_loc)
@@ -288,12 +298,24 @@ class CarlaEnv:
             reward += -1
 
         #Obstacle distance
+        min_dist = 100
         for vehicle in self.vehicles:
             if vehicle.is_alive:
                 loc = vehicle.get_location()
                 dist = math.sqrt((loc.x-ego_loc.x)**2 + (loc.y-ego_loc.y)**2 + (loc.z-ego_loc.z)**2)
+                min_dist = min(min_dist, dist)
                 if dist < obstacle_radius:
                     reward += (dist/obstacle_radius)**beta - 1
+        if min_dist > 3 and kmh < 5:
+            reward += -5
+
+        #Steer differ from movement
+        if self.current_movement == 0 and act[0] > 0.1:
+            reward += -5
+        elif self.current_movement == 2 and act[0] < -0.1:
+            reward += -5
+        elif self.current_movement == 1 and (act[0] < -0.2 or act[0] > 0.2):
+            reward += -5
 
         transform = self.sensors[0].get_transform()
         self.spectator.set_transform(transform)
@@ -318,6 +340,8 @@ class CarlaEnv:
             if junc.id in self.route.junc_ids:
                 ind = self.route.junc_ids.index(junc.id)
                 movement = self.route.junc_movement[ind]
+
+        self.current_movement = movement
         
         return [image, movement]
     
@@ -344,9 +368,10 @@ class CarlaEnv:
                 continue
         self.set_rgb_camera()
         self.set_depth_camera()
-        self.set_semantic_camera()
+        #self.set_semantic_camera()
         self.set_collision_sensor()
         self.set_obstacle_sensor()
+        self.set_lane_invasion_sensor()
 
     def set_rgb_camera(self):
         cam_bp = self.blueprint_library.find('sensor.camera.rgb')
@@ -403,6 +428,14 @@ class CarlaEnv:
         self.sensors.append(sensor)
 
         sensor.listen(lambda event: self.process_obstacle(event))
+
+    def set_lane_invasion_sensor(self):
+        obs_bp = self.blueprint_library.find('sensor.other.lane_invasion')
+        spawn_point = carla.Transform(carla.Location(x=0.8, z=1.7))
+        sensor = self.world.spawn_actor(obs_bp, spawn_point, attach_to=self.ego_vehicle)
+        self.sensors.append(sensor)
+
+        sensor.listen(lambda event: self.lane_invasion_hist.append(event))
 
     def process_rgb_img(self, img):
         if img.raw_data is not None:

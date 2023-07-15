@@ -68,12 +68,14 @@ if __name__=='__main__':
         obs[0] = torch.permute(obs[0], (0, 3, 1, 2))
         obs[0] = encoder(obs[0]).numpy()
 
+        prev_act = [0.0, 0.0]
+
         env.ego_vehicle.set_transform(spawn_point)
         env.traffic_manager.ignore_lights_percentage(env.ego_vehicle, 100)
         env.traffic_manager.random_left_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.random_right_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.auto_lane_change(env.ego_vehicle, False)
-        env.traffic_manager.set_desired_speed(env.ego_vehicle, 40.)
+        env.traffic_manager.set_desired_speed(env.ego_vehicle, 20.)
 
         env.traffic_manager.set_path(env.ego_vehicle, route)
 
@@ -83,16 +85,21 @@ if __name__=='__main__':
         data = []
         while not done:
             control = env.ego_vehicle.get_control()
-            action = [control.steer, control.throttle, control.brake]
+            action = [control.steer, 0.0]
+            if control.throttle > control.brake:
+                action[1] = control.throttle
+            else:
+                action[1] = -control.brake
             obs_t1, reward, done, info = env.step(action)
 
             obs_t1[0] = torch.from_numpy(obs_t1[0]).float().unsqueeze(0)
             obs_t1[0] = torch.permute(obs_t1[0], (0, 3, 1, 2))
             obs_t1[0] = encoder(obs_t1[0]).numpy()
 
-            data.append([obs, action, reward, obs_t1, done, info])
+            data.append([prev_act, obs, action, reward, obs_t1, done, info])
 
             obs = obs_t1
+            prev_act = action
 
         out_file = os.path.join(args.out_folder, f"{episode}.pkl")
         with open(out_file, 'wb') as f:

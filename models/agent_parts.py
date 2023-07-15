@@ -5,17 +5,17 @@ import torch.nn.functional as F
 class Actor(nn.Module):
     def __init__(self, emb_size=256):
         super().__init__()
-        self.fc1 = nn.Linear(emb_size+3, 256)
+        self.fc1 = nn.Linear(emb_size+2, 256)
         self.fc2 = nn.Linear(256, 256)
 
         self.fc3_left = nn.Linear(256, 256)
-        self.out_left = nn.Linear(256, 3)
+        self.out_left = nn.Linear(256, 2)
 
         self.fc3_right = nn.Linear(256, 256)
-        self.out_right = nn.Linear(256, 3)
+        self.out_right = nn.Linear(256, 2)
 
         self.fc3_straight = nn.Linear(256, 256)
-        self.out_straight = nn.Linear(256, 3)
+        self.out_straight = nn.Linear(256, 2)
 
     def forward(self, emb, command, action):
         x = torch.cat((emb, action), dim=1)
@@ -33,14 +33,16 @@ class Actor(nn.Module):
 
         x = torch.stack((x_left, x_straight, x_right), dim=0)
 
-        x = torch.gather(x, 0, command.expand((-1,3)).view(1,-1,3)).squeeze(0)
+        x = torch.gather(x, 0, command.expand((-1,2)).view(1,-1,2)).squeeze(0)
+
+        x = torch.tanh(x)
 
         return x
     
 class Critic(nn.Module):
     def __init__(self, emb_size=256):
         super().__init__()
-        self.fc1 = nn.Linear(emb_size+3, 256)
+        self.fc1 = nn.Linear(emb_size+2, 256)
         self.fc2 = nn.Linear(256, 256)
 
         self.fc3_left = nn.Linear(256, 256)
@@ -84,11 +86,11 @@ class TwinCritic(nn.Module):
 class Environment(nn.Module):
     def __init__(self, emb_size=256):
         super().__init__()
-        self.fc1_transition = nn.Linear(3, 128)
+        self.fc1_transition = nn.Linear(2, 128)
         self.fc2_transition = nn.Linear(128+emb_size, 512)
         self.out_transition = nn.Linear(512, emb_size)
 
-        self.fc1_reward = nn.Linear(3, 128)
+        self.fc1_reward = nn.Linear(2, 128)
         self.fc2_reward = nn.Linear(128+emb_size*2, 512)
         self.fc3_reward = nn.Linear(512, 256)
         self.out_reward = nn.Linear(256, 1)

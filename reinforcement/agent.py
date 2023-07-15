@@ -1,4 +1,5 @@
 import pickle
+import copy
 
 import numpy as np
 import torch
@@ -7,6 +8,27 @@ import torch.nn.functional as F
 from models.agent_parts import Actor, TwinCritic, Environment
 from reinforcement.buffer import ReplayBuffer
 
+
+class OUNoise:
+    """Ornstein-Uhlenbeck process."""
+
+    def __init__(self, size, mu=0., theta=0.6, sigma=0.2):
+        """Initialize parameters and noise process."""
+        self.mu = mu * np.ones(size)
+        self.theta = theta
+        self.sigma = sigma
+        self.reset()
+
+    def reset(self):
+        """Reset the internal state (= noise) to mean (mu)."""
+        self.state = copy.copy(self.mu)
+
+    def sample(self):
+        """Update internal state and return it as a noise sample."""
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma * np.array([np.random.randn() for i in range(len(x))])
+        self.state = x + dx
+        return self.state
 
 class TD3ColDeductiveAgent:
     def __init__(self, obs_size=256, device='cpu', actor_lr=1e-3, critic_lr=1e-3,
@@ -41,8 +63,8 @@ class TD3ColDeductiveAgent:
         self.lambda_bc = lambda_bc
         self.lambda_q = lambda_q
 
-        self.policy_clip_min = torch.tensor([-0.75, 0.0, 0.0]).to(device)
-        self.policy_clip_max = torch.tensor([0.75, 1.0, 1.0]).to(device)
+        self.policy_clip_min = torch.tensor([-0.75, -1.0]).to(device)
+        self.policy_clip_max = torch.tensor([0.75, 1.0]).to(device)
 
         self.policy_clip_max_np = self.policy_clip_max.cpu().numpy()
         self.policy_clip_min_np = self.policy_clip_min.cpu().numpy()
@@ -56,6 +78,8 @@ class TD3ColDeductiveAgent:
         self.device = device
         self.save_path = save_path
 
+        self.ou_noise = OUNoise(2, sigma=act_noise)
+
     def select_action(self, obs, prev_action, eval=False):
         emb, command = obs
         emb = torch.FloatTensor(emb.reshape(1, -1)).to(self.device)
@@ -65,9 +89,13 @@ class TD3ColDeductiveAgent:
         with torch.no_grad():
             action = self.actor(emb, command, prev_action).cpu().numpy().flatten()
         if not eval:
-            noise = np.random.normal(0, self.act_noise, size=action.shape)
+            #noise = np.random.normal(0, self.act_noise, size=action.shape)
+            noise = self.ou_noise.sample()
             action = (action + noise).clip(self.policy_clip_min_np, self.policy_clip_max_np)
         return action.tolist()
+    
+    def reset_noise(self):
+        self.ou_noise.reset()
     
     def store_transition(self, p_act, obs, act, rew, next_obs, done):
         self.actor_buffer.store_transition((p_act, obs, act, rew, next_obs, done))
@@ -100,7 +128,6 @@ class TD3ColDeductiveAgent:
             done = torch.cat((done_exp, done_act), dim=0)
 
             critic_loss = self.lambda_q*self._compute_critic_loss(obs, act, rew, next_obs, done)
-            critic_loss += self.env_w*self._compute_env_loss(obs, p_act)
 
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
@@ -112,6 +139,7 @@ class TD3ColDeductiveAgent:
             else:
                 actor_loss = self.lambda_bc*self._compute_bc_loss(obs_exp, act_exp, p_act_exp)
                 actor_loss += self.lambda_a*self._compute_actor_loss(obs, p_act)
+                actor_loss += self.env_w*self._compute_env_loss(obs, p_act)
 
             actor_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
