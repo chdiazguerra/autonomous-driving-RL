@@ -5,7 +5,7 @@ import os
 
 import torch
 
-from reinforcement.carla_env import CarlaEnv
+from reinforcement.carla_env import CarlaEnv, Route
 from models.autoencoder import Autoencoder, AutoencoderSEM
 
 if __name__=='__main__':
@@ -22,13 +22,14 @@ if __name__=='__main__':
     argparser.add_argument('--cam_width', type=int, default=256, help="Camera width")
     argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
     argparser.add_argument('--nb_vehicles', type=int, default=40, help="Number of vehicles in the simulation")
-    argparser.add_argument('--nb_episodes', type=int, default=45, help="Number of episodes to run")
+    argparser.add_argument('--nb_episodes', type=int, default=50, help="Number of episodes to run")
     argparser.add_argument('--tick', type=float, default=0.05, help="Sensor tick length")
 
     argparser.add_argument('-sem', action='store_true', help="Use semantic segmentation")
     argparser.add_argument('--autoencoder_model', type=str, help="Autoencoder model path", required=True)
     argparser.add_argument('--out_folder', type=str, default='./expert_data', help="Output folder")
     argparser.add_argument('-low_semantic', action='store_true', help="Use low resolution semantic segmentation")
+    argparser.add_argument('--from_ep', type=int, default=0, help="Start episode number")
 
     args = argparser.parse_args()
 
@@ -45,22 +46,20 @@ if __name__=='__main__':
 
     env = CarlaEnv(args.world_port, args.host, 'Town01', args.weather,
                  args.cam_height, args.cam_width, args.fov, args.nb_vehicles, args.tick,
-                 math.inf, args.low_semantic)
+                 1000, args.low_semantic)
     
     spawn_points = env.map.get_spawn_points()
-    routes = [[149, 98, 197, 199, 110, 14, 115, 61],
-            [222, 200, 77, 168, 19, 166, 164, 21, 161, 24, 159, 80, 46, 26, 157, 136, 155, 28, 151, 76, 104, 226, 228],
-            [56, 53, 51, 83, 55, 169, 171, 173, 33, 11, 84, 137, 153, 27, 154]]
+    possible_routes = Route.get_possibilities("Town01")
+    routes = [[possible_routes[0]().end.location],
+            [possible_routes[1]().end.location],
+            [possible_routes[2]().end.location]]
 
-    for episode in range(args.nb_episodes):
+    for episode in range(args.from_ep, args.nb_episodes):
         print("Episode {}".format(episode))
 
         route_id = episode % len(routes)
 
-        spawn_point = spawn_points[routes[route_id][0]]
-        route = []
-        for i in routes[route_id][1:]:
-            route.append(spawn_points[i].location)
+        route = routes[route_id]
 
         obs = env.reset(route_id)
 
@@ -70,12 +69,12 @@ if __name__=='__main__':
 
         prev_act = [0.0, 0.0]
 
-        env.ego_vehicle.set_transform(spawn_point)
         env.traffic_manager.ignore_lights_percentage(env.ego_vehicle, 100)
         env.traffic_manager.random_left_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.random_right_lanechange_percentage(env.ego_vehicle, 0)
         env.traffic_manager.auto_lane_change(env.ego_vehicle, False)
-        env.traffic_manager.set_desired_speed(env.ego_vehicle, 20.)
+        env.traffic_manager.set_desired_speed(env.ego_vehicle, 25.)
+        env.traffic_manager.distance_to_leading_vehicle(env.ego_vehicle, 5.0)
 
         env.traffic_manager.set_path(env.ego_vehicle, route)
 
@@ -95,6 +94,9 @@ if __name__=='__main__':
             obs_t1[0] = torch.from_numpy(obs_t1[0]).float().unsqueeze(0)
             obs_t1[0] = torch.permute(obs_t1[0], (0, 3, 1, 2))
             obs_t1[0] = encoder(obs_t1[0]).numpy()
+
+            if info["speed"] < 1e-6 and action[1] <= 0.0: #Avoid getting stuck when learning
+                action[1] = -0.05
 
             data.append([prev_act, obs, action, reward, obs_t1, done, info])
 

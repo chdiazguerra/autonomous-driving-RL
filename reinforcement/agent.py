@@ -29,24 +29,43 @@ class OUNoise:
         dx = self.theta * (self.mu - x) + self.sigma * np.array([np.random.randn() for i in range(len(x))])
         self.state = x + dx
         return self.state
+    
+class StepLR(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, step_size, gamma=0.9, last_epoch=-1, min_lr=1e-6, verbose=False):
+        self.step_size = step_size
+        self.gamma = gamma
+        self.min_lr = min_lr
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if (self.last_epoch == 0) or (self.last_epoch % self.step_size != 0):
+            return [group['lr'] for group in self.optimizer.param_groups]
+        return [max(self.min_lr, group['lr'] * self.gamma)
+                for group in self.optimizer.param_groups]
 
 class TD3ColDeductiveAgent:
     def __init__(self, obs_size=256, device='cpu', actor_lr=1e-3, critic_lr=1e-3,
                  pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.99,
                  tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
-                 exp_buff_size=100000, actor_buffer_size=50000, exp_prop=0.25, batch_size=64,
-                 save_path='agent.pkl'):
+                 exp_buff_size=20000, actor_buffer_size=20000, exp_prop=0.25, batch_size=64,
+                 save_path='agent.pkl', scheduler_step_size=350, scheduler_gamma=0.9):
         assert device in ['cpu', 'cuda'], "device must be either 'cpu' or 'cuda'"
 
         self.actor = Actor(obs_size).to(device)
         self.actor_target = Actor(obs_size).to(device)
         self.actor_target.load_state_dict(self.actor.state_dict())
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr, weight_decay=l2_reg)
+        self.actor_scheduler = StepLR(self.actor_optimizer,
+                                        step_size=scheduler_step_size,
+                                        gamma=scheduler_gamma)
 
         self.critic = TwinCritic(obs_size).to(device)
         self.critic_target = TwinCritic(obs_size).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr, weight_decay=l2_reg)
+        self.critic_scheduler = StepLR(self.critic_optimizer,
+                                        step_size=scheduler_step_size,
+                                        gamma=scheduler_gamma)
 
         self.env_model = Environment(obs_size).to(device)
         self.env_model_optimizer = torch.optim.Adam(self.env_model.parameters(), lr=1e-3)
@@ -130,8 +149,9 @@ class TD3ColDeductiveAgent:
             critic_loss = self.lambda_q*self._compute_critic_loss(obs, act, rew, next_obs, done)
 
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 2.0)
         self.critic_optimizer.step()
+        self.critic_scheduler.step()
         
         if it%self.pol_freq_update==0:
             if is_pretraining:
@@ -142,7 +162,7 @@ class TD3ColDeductiveAgent:
                 actor_loss += self.env_w*self._compute_env_loss(obs, p_act)
 
             actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 2.0)
             self.actor_optimizer.step()
             # Update the frozen target models
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
@@ -150,6 +170,8 @@ class TD3ColDeductiveAgent:
 
             for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            
+            self.actor_scheduler.step()
 
         self._update_env_model(obs, act, rew, next_obs)
 
@@ -202,7 +224,7 @@ class TD3ColDeductiveAgent:
         r_loss = F.mse_loss(reward, rew)
         loss = t_loss + r_loss
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.env_model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.env_model.parameters(), 2.0)
         self.env_model_optimizer.step()
 
     def change_opt_lr(self, actor_lr, critic_lr):

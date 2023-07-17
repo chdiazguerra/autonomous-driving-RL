@@ -10,7 +10,7 @@ from reinforcement.carla_env import CarlaEnv, Route
 from reinforcement.agent import TD3ColDeductiveAgent
 from models.autoencoder import Autoencoder, AutoencoderSEM
 
-def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_steps, nb_training_steps):
+def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_steps, nb_training_steps, data_path):
     print(f"Pretraining... {nb_pretraining_steps} steps")
     for i in range(nb_pretraining_steps):
         agent.update_step(i, True)
@@ -18,7 +18,8 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
     print("Pretraining done")
 
     print(f"Training... {nb_training_steps} steps")
-    agent.change_opt_lr(1e-4, 1e-3)
+    if nb_pretraining_steps > 0:
+        agent.change_opt_lr(1e-4, 1e-3)
 
     tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec = [], [], [], []
     evaluate = False
@@ -50,12 +51,15 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
 
     for tr_step in range(nb_training_steps):
 
-        if (tr_step+1)% (nb_training_steps / 20) == 0:
+        if (tr_step+1)% (nb_training_steps / 25) == 0:
             evaluate = True
 
-        if (tr_step+1)%200 == 0:
+        if (tr_step+1)%1000 == 0 and (tr_step+1) < 300000:
             without_noise = not without_noise
             print("Without Noise" if without_noise else "With Noise")
+        if (tr_step+1) >= 300000:
+            without_noise = True
+            print("Without Noise")
 
         act = agent.select_action(obs, prev_act, eval=without_noise)
         obs_t1, reward, done, _ = env.step(act)
@@ -66,7 +70,7 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
 
         agent.store_transition(prev_act, obs, act, reward, obs_t1, done)
 
-        if tr_step > 100 and tr_step%5 == 0:
+        if tr_step > 256 and tr_step%5 == 0:
             agent.update_step(updates, False)
             updates += 1
 
@@ -84,7 +88,7 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
             episode_steps = 0
 
             agent.save()
-            with open('train_data.pkl', 'wb') as f:
+            with open(data_path, 'wb') as f:
                 pickle.dump((tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec), f)
 
             if evaluate:
@@ -174,19 +178,27 @@ if __name__=='__main__':
     argparser.add_argument('--cam_width', type=int, default=256, help="Camera width")
     argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
     argparser.add_argument('--nb_vehicles', type=int, default=40, help="Number of vehicles in the simulation")
-    argparser.add_argument('--nb_episodes', type=int, default=45, help="Number of episodes to run")
     argparser.add_argument('--tick', type=float, default=0.05, help="Sensor tick length")
 
     argparser.add_argument('-sem', action='store_true', help="Use semantic segmentation")
     argparser.add_argument('--autoencoder_model', type=str, help="Autoencoder model path", required=True)
     
     argparser.add_argument('--device', type=str, default='cuda', help="Device to use for training", choices=['cuda', 'cpu'])
-    argparser.add_argument('--pre_steps', type=int, default=10000, help="Number of steps of pretraining")
-    argparser.add_argument('--steps', type=int, default=300000, help="Number of steps of training")
-    argparser.add_argument('--save_path', type=str, default='agent.pkl', help="Path to save the agent")
+    argparser.add_argument('--pre_steps', type=int, default=5000, help="Number of steps of pretraining")
+    argparser.add_argument('--steps', type=int, default=500000, help="Number of steps of training")
+    argparser.add_argument('--save_folder', type=str, default='./agent', help="Path to save the agent and data")
     argparser.add_argument('--exp_data', type=str, default='exp_data.pkl', help="Path of the expert data")
 
     args = argparser.parse_args()
+
+    if not os.path.exists(args.exp_data):
+        raise Exception('Expert data not found')
+    if not os.path.exists(args.autoencoder_model):
+        raise Exception('Autoencoder model not found')
+
+    os.makedirs(args.save_folder, exist_ok=True)
+    save_agent_path = os.path.join(args.save_folder, 'agent.pkl')
+    save_data_path = os.path.join(args.save_folder, 'data.pkl')
 
     if args.sem:
         autoencoder = AutoencoderSEM.load_from_checkpoint(args.autoencoder_model)
@@ -204,21 +216,21 @@ if __name__=='__main__':
     num_routes = len(Route.get_possibilities('Town01'))
     weather_list = ['ClearNoon', 'WetNoon', 'HardRainNoon', 'ClearSunset']
 
-    if os.path.exists(args.save_path):
-        with open(args.save_path, 'rb') as f:
+    if os.path.exists(save_agent_path):
+        with open(save_agent_path, 'rb') as f:
             agent = pickle.load(f)
     else:
         agent = TD3ColDeductiveAgent(obs_size=256, device=args.device, actor_lr=1e-3, critic_lr=1e-3,
-                    pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.2, gamma=0.99,
+                    pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.99,
                     tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
-                    exp_buff_size=100000, actor_buffer_size=5000, exp_prop=0.25, batch_size=64,
-                    save_path=args.save_path)
+                    exp_buff_size=40000, actor_buffer_size=20000, exp_prop=0.25, batch_size=64,
+                    save_path=save_agent_path, scheduler_step_size=350, scheduler_gamma=0.9)
         
         with open(args.exp_data, 'rb') as f:
             exp_data = pickle.load(f)
 
         agent.load_exp_buffer(exp_data)
 
-    train_agent(env, encoder, num_routes, weather_list, agent, args.pre_steps, args.steps)
+    train_agent(env, encoder, num_routes, weather_list, agent, args.pre_steps, args.steps, save_data_path)
     
     

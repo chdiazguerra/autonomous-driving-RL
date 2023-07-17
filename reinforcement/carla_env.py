@@ -4,7 +4,7 @@ import math
 import carla
 import numpy as np
 
-from data.utils import to_rgb_array, depth_to_logarithmic_grayscale, depth_to_array, labels_to_array, low_resolution_semantics, distance_from_center
+from data.utils import to_rgb_array, depth_to_logarithmic_grayscale, depth_to_array, labels_to_array, low_resolution_semantics, distance_from_center, dist_to_roadline
 
 
 class Observation:
@@ -15,7 +15,7 @@ class Observation:
         self.obstacle_dist = (0, math.inf) #(Frame detected, distance)
 
 class Route:
-    def __init__(self, init, end, orientation, junc_ids, junc_movement):
+    def __init__(self, init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims):
         assert orientation in ['N', 'S', 'W', 'E']
         assert len(junc_ids) == len(junc_movement)
         
@@ -24,49 +24,131 @@ class Route:
         self.orientation = orientation
         self.junc_ids = junc_ids #Junctions ids
         self.junc_movement = junc_movement #Movement to take at each junction
-        self.max_distance = self.distance_to_goal(self.init.location) + 100
+        self.max_distance = self.distance_to_goal(self.init.location) + 50
+        self.spawn_points = spawn_points
+        self.x_lims = x_lims
+        self.y_lims = y_lims
     
     @classmethod
     def town1_1(cls):
-        init = carla.Transform(carla.Location(x=229.781677, y=-1.959888, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=179.999634, roll=0.000000))
-        end = carla.Transform(carla.Location(x=118.949997, y=55.840000, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=179.999756, roll=0.000000))
+        init = carla.Transform(carla.Location(x=153.759995+np.random.uniform(-0.5, 0.5), y=28.900000, z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=90.000046, roll=0.000000))
+        end = carla.Transform(carla.Location(x=170.547531, y=59.902679, z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=0.000061+np.random.uniform(-3.0, 3.0), roll=0.000000))
         
-        junc_ids = [54, 332]
-        junc_movement = [0, 2]
+        junc_ids = [332]
+        junc_movement = [0]
 
-        orientation = 'W'
+        orientation = 'S'
 
-        return cls(init, end, orientation, junc_ids, junc_movement)
+        spawn_points = [
+                        carla.Transform(carla.Location(x=153.76+np.random.uniform(-0.5, 0.5),
+                                                        y=28.9+np.random.uniform(6, 15),
+                                                        z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                        yaw=90.0+np.random.uniform(-3., 3.),
+                                                        roll=0.0)),
+                        carla.Transform(carla.Location(x=170.54+np.random.uniform(-25., -2.),
+                                                        y=59.90+np.random.uniform(-0.5, 0.5),
+                                                        z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                        yaw=0.0+np.random.uniform(-3., 3.),
+                                                        roll=0.0)),
+                        carla.Transform(carla.Location(x=191.08+np.random.uniform(-30., 0.),
+                                                        y=55.84+np.random.uniform(-0.5, 0.5),
+                                                        z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                        yaw=180.0+np.random.uniform(-3., 3.),
+                                                        roll=0.0)),
+                        carla.Transform(carla.Location(x=158.12+np.random.uniform(-1.5, -0.5),
+                                                        y=45.08+np.random.uniform(-7., 0.0),
+                                                        z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                        yaw=-90.0+np.random.uniform(-3., 3.),
+                                                        roll=0.0))
+                            ]
+        
+        x_lims = [151.5, 200.0]
+        y_lims = [0, 63.9]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims)
 
     @classmethod
     def town1_2(cls):
-        init = carla.Transform(carla.Location(x=338.979980, y=249.429993, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=-90.000298, roll=0.000000))
-        end = carla.Transform(carla.Location(x=92.109985, y=159.949997, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=-90.000298, roll=0.000000))
+        init = carla.Transform(carla.Location(x=119.469986, y=129.750000+np.random.uniform(-0.5, 0.5), z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=179.999756, roll=0.000000))
+        end = carla.Transform(carla.Location(x=92.109985, y=105.661537, z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=-90.000298+np.random.uniform(-3.0, 3.0), roll=0.000000))
         
-        junc_ids = [194, 255]
-        junc_movement = [0, 2]
+        junc_ids = [306]
+        junc_movement = [2]
 
-        orientation = 'N'
+        orientation = 'W'
 
-        return cls(init, end, orientation, junc_ids, junc_movement)
+        c = np.random.choice(2)
+        spawn_points = [
+                        carla.Transform(carla.Location(x=119.47+np.random.uniform(-15., -6.),
+                                                       y=129.75+np.random.uniform(-0.5, 0.5),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=180.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=92.11+np.random.uniform(-0.5, 0.5),
+                                                       y=105.66+(1-c)*np.random.uniform(5, 25)+c*np.random.uniform(33,40),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-90.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=88.62+np.random.uniform(-0.5, 0.5),
+                                                       y=101.83+np.random.uniform(0, 15),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=90.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=105.57+np.random.uniform(0.0, 7.0),
+                                                       y=133.77+np.random.uniform(-1.5, -0.5),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=0.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0))
+                        ]
+
+        x_lims = [89.38, 150.0]
+        y_lims = [90.0, 133.0]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims)
     
     @classmethod
     def town1_3(cls):
-        init = carla.Transform(carla.Location(x=22.179979, y=330.459991, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=-0.000092, roll=0.000000))
-        end = carla.Transform(carla.Location(x=151.119736, y=198.759842, z=0.300000),
-                                    carla.Rotation(pitch=0.000000, yaw=-0.000092, roll=0.000000))
+        init = carla.Transform(carla.Location(x=395.959991+np.random.uniform(-0.5, 0.5), y=308.209991, z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=-90.000298, roll=0.000000))
+        end = carla.Transform(carla.Location(x=396.637604, y=208.829865, z=0.300000),
+                                    carla.Rotation(pitch=0.000000, yaw=-89.999939+np.random.uniform(-3.0, 3.0), roll=0.000000))
         
-        junc_ids = [87, 255]
-        junc_movement = [0, 2]
+        junc_ids = []
+        junc_movement = []
 
-        orientation = 'E'
+        orientation = 'N'
 
-        return cls(init, end, orientation, junc_ids, junc_movement)
+        spawn_points = [
+                        carla.Transform(carla.Location(x=395.96+np.random.uniform(-0.5, 0.5),
+                                                       y=308.21+np.random.uniform(-30., -6.),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-90.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=392.47+np.random.uniform(0.5, 1.5),
+                                                       y=229.07+np.random.uniform(0, 30),
+                                                       z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=90.0+np.random.uniform(-3., 3.),
+                                                       roll=0.0))
+                        ]
+        
+        x_lims = [390.0, 400.0]
+        y_lims = [150.0, 350.0]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims)
 
     @classmethod
     def get_possibilities(cls, name):
@@ -81,7 +163,7 @@ class Route:
         return math.sqrt((self.end.location.x - loc.x)**2 + (self.end.location.y - loc.y)**2)
     
     def is_oversteer(self, rotation):
-        dalpha = 2
+        dalpha = 5
         if self.orientation == 'N':
             return 90-dalpha < rotation.yaw < 90+dalpha
         elif self.orientation == 'S':
@@ -92,11 +174,14 @@ class Route:
             return (0-dalpha < rotation.yaw <= 0) or (0 <= rotation.yaw < 0+dalpha)
         else:
             raise NotImplementedError()
+    
+    def is_out_of_limits(self, loc):
+        return not (self.x_lims[0] < loc.x < self.x_lims[1] and self.y_lims[0] < loc.y < self.y_lims[1])
 
 class CarlaEnv:
     def __init__(self, world_port=2000, host='localhost', map='Town01', weather='ClearNoon',
                  cam_height=256, cam_width=256, fov=100, nb_vehicles=40, tick=0.05,
-                 nb_frames_max=10000, low_semantic=True):
+                 nb_frames_max=10000, low_semantic=True, get_semantic=False):
         
         assert map in ['Town01', 'Town02']
         
@@ -130,6 +215,7 @@ class CarlaEnv:
         self.tick = tick
         self.nb_frames_max = nb_frames_max
         self.low_semantic = low_semantic
+        self.get_semantic = get_semantic
 
         # Data
         self.frame = 0
@@ -158,8 +244,9 @@ class CarlaEnv:
         self.obs = Observation()
         self.intersections = 2
         self.current_movement = 1
+        self.route = self.get_route(route_id)
 
-        self.spawn_ego_vehicle(route_id)
+        self.spawn_ego_vehicle()
         self.spawn_vehicles()
         
         for _ in range(20):
@@ -198,21 +285,21 @@ class CarlaEnv:
         self.frame += 1
 
         #Rewards
-        reward = 0
+        reward = 0.0
         done = False
 
         #Params
         beta = 3
         dmin = 1.5
         dmax = 3.0
-        vmin = 10
-        vmax = 40
-        vtarget = 20
+        vmin = 20
+        vmax = 26
+        vtarget = 25
         amin = 5
         amax = 20
         obstacle_radius = 2.0
         dist_reach_goal = 2.0
-        speed_factor = 3.0
+        speed_factor = 5.0
 
 
         ego_transform = self.ego_vehicle.get_transform()
@@ -239,7 +326,7 @@ class CarlaEnv:
         #Terminated by lane invasion
         if len(self.lane_invasion_hist) > 0:
             done = True
-            reward = -100
+            reward = -1000
 
         #Terminated by oversteering
         if self.route.is_oversteer(ego_rot):
@@ -249,21 +336,26 @@ class CarlaEnv:
         #Terminated by reaching the goal
         if dist_to_goal < dist_reach_goal:
             done = True
-            reward = 500
-        
+            reward = 1000
+
+        #Terminated by out of limits
+        if self.route.is_out_of_limits(ego_loc):
+            done = True
+            reward = -1000
+
         #Distance to goal
-        if dist_to_goal <= self.route.max_distance-100:
-            reward += 5*(1-(dist_to_goal/dmax)**beta)
+        if dist_to_goal <= self.route.max_distance-50:
+            reward += (1-(dist_to_goal/(self.route.max_distance-50))**beta)
         else:
-            reward += -5
+            reward += -1
 
         #Speed limit
         if kmh <= vmin:
-            reward += speed_factor*(kmh/vmin)**beta
+            reward += speed_factor*(kmh/vmin)**1
         elif kmh <= vtarget:
             reward += speed_factor
-        elif kmh <= vmax:
-            reward += speed_factor*(1 - ((kmh-vtarget)/(vmax-vtarget))**beta)
+        elif kmh < vmax:
+            reward += speed_factor*(1 - ((kmh-vtarget)/(vmax-vtarget))**(1/beta))
         else:
             reward += -speed_factor
 
@@ -280,13 +372,15 @@ class CarlaEnv:
         yaw_diff = abs(ego_yaw - wp_yaw)
         if yaw_diff > 180:
             yaw_diff = 360 - yaw_diff
+
         
-        if yaw_diff <= amin:
-            reward += 1 - (yaw_diff/amin)**beta
-        elif yaw_diff < amax:
-            reward += -1 + ((amax-yaw_diff)/(amax-amin))**beta
-        else:
-            reward += -1
+        if self.current_movement == 1: #Avoid wrong readings when turning
+            if yaw_diff <= amin:
+                reward += 1 - (yaw_diff/amin)**beta
+            elif yaw_diff < amax:
+                reward += -1 + ((amax-yaw_diff)/(amax-amin))**beta
+            else:
+                reward += -1
 
         #Distance from lane center
         d = distance_from_center(wp.next(0.001)[0], wp, ego_loc)
@@ -297,8 +391,21 @@ class CarlaEnv:
         else:
             reward += -1
 
+        #Distance to roadline
+        d_left, d_right, _, _ = dist_to_roadline(self.map, self.ego_vehicle)
+        d_road = min(d_left, d_right)
+        best_d = 1.0
+        worst_d = 0.8
+        if self.current_movement == 1:
+            if d_road >= best_d:
+                reward += 1.0
+            elif d_road >= worst_d:
+                reward += (d_road-worst_d)/(best_d-worst_d)
+            else:
+                reward += (d_road/worst_d)**beta - 1
+
         #Obstacle distance
-        min_dist = 100
+        min_dist = math.inf
         for vehicle in self.vehicles:
             if vehicle.is_alive:
                 loc = vehicle.get_location()
@@ -306,21 +413,48 @@ class CarlaEnv:
                 min_dist = min(min_dist, dist)
                 if dist < obstacle_radius:
                     reward += (dist/obstacle_radius)**beta - 1
-        if min_dist > 3 and kmh < 5:
-            reward += -5
+
+        #Leading vehicle distance
+        frame, d_leading = self.obs.obstacle_dist
+        if abs(frame-self.frame)>2:
+            d_leading = math.inf
+        if d_leading < obstacle_radius+2:
+            reward += 10*((d_leading/(obstacle_radius+2))**beta - 1)
+
+        #No movement
+        if min_dist > 4.0 and kmh < 2:
+            reward += -10
 
         #Steer differ from movement
-        if self.current_movement == 0 and act[0] > 0.1:
-            reward += -5
-        elif self.current_movement == 2 and act[0] < -0.1:
-            reward += -5
+        factor = 10
+        min_steer = 0.1
+        if self.current_movement == 0:
+            if act[0] < -min_steer:
+                reward += factor
+            elif act[0] <= 0.0:
+                reward += factor*(-act[0]/min_steer)**(1/beta)
+            elif act[0] <= min_steer:
+                reward += -factor*(act[0]/min_steer)**(1/beta)
+            else:
+                reward += -factor
+        elif self.current_movement == 2:
+            if act[0] >= min_steer:
+                reward += factor
+            elif act[0] >= 0.0:
+                reward += factor*(act[0]/min_steer)**(1/beta)
+            elif act[0] >= -min_steer:
+                reward += -factor*(-act[0]/min_steer)**(1/beta)
+            else:
+                reward += -factor
         elif self.current_movement == 1 and (act[0] < -0.2 or act[0] > 0.2):
-            reward += -5
+            reward += -factor
 
         transform = self.sensors[0].get_transform()
         self.spectator.set_transform(transform)
 
-        info = {'speed': kmh, 'distance_to_goal': dist_to_goal, 'distance_from_lane_center': d, 'yaw_diff': yaw_diff}
+        info = {'speed': kmh, 'distance_to_goal': dist_to_goal, 'distance_from_lane_center': d, 'yaw_diff': yaw_diff,
+                'distance_to_left': d_left, 'distance_to_right': d_right, 'distance_leading': d_leading,
+                'collision': len(self.collision_hist) > 0, 'semantic': self.obs.semantic}
 
         #Return obs, reward, done, info
         return self.get_observation(), reward, done, info
@@ -346,29 +480,29 @@ class CarlaEnv:
         return [image, movement]
     
     def spawn_vehicles(self):
-        spawn_points = self.world.get_map().get_spawn_points()
-        for _ in range(self.nb_vehicles):
-            while True:
-                spawn_point = random.choice(spawn_points)
-                vehicle = self.world.try_spawn_actor(random.choice(self.blueprint_library.filter('vehicle.*')),
+        #spawn_points = self.world.get_map().get_spawn_points()
+        #possible_idx = self.route.spawn_points
+        for spawn_point in self.route.spawn_points:
+            #spawn_point = spawn_points[idx]
+            if np.random.uniform(0., 1.0) < 0.9:
+                vehicle = self.world.try_spawn_actor(self.world.get_blueprint_library().find('vehicle.audi.a2'),#random.choice(self.blueprint_library.filter('vehicle.*')),
                                                 spawn_point)
                 if vehicle is not None:
                     vehicle.set_autopilot(True)
+                    self.traffic_manager.set_desired_speed(vehicle, 20.)
                     self.vehicles.append(vehicle)
-                    break
 
-    def spawn_ego_vehicle(self, route_id=None):
+    def spawn_ego_vehicle(self):
         while True:
             try:
-                route = self.get_route(route_id)
-                self.ego_vehicle = self.world.spawn_actor(self.ego_vehicle_bp, route.init)
-                self.route = route
+                self.ego_vehicle = self.world.spawn_actor(self.ego_vehicle_bp, self.route.init)
                 break
             except:
                 continue
         self.set_rgb_camera()
         self.set_depth_camera()
-        #self.set_semantic_camera()
+        if self.get_semantic:
+            self.set_semantic_camera()
         self.set_collision_sensor()
         self.set_obstacle_sensor()
         self.set_lane_invasion_sensor()
@@ -422,6 +556,7 @@ class CarlaEnv:
 
     def set_obstacle_sensor(self):
         obs_bp = self.blueprint_library.find('sensor.other.obstacle')
+        obs_bp.set_attribute('distance', '20')
         obs_bp.set_attribute('sensor_tick', str(self.tick))
         spawn_point = carla.Transform(carla.Location(x=0.8, z=1.7))
         sensor = self.world.spawn_actor(obs_bp, spawn_point, attach_to=self.ego_vehicle)
