@@ -48,7 +48,7 @@ class TD3ColDeductiveAgent:
                  pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.99,
                  tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
                  exp_buff_size=20000, actor_buffer_size=20000, exp_prop=0.25, batch_size=64,
-                 save_path='agent.pkl', scheduler_step_size=350, scheduler_gamma=0.9):
+                 scheduler_step_size=350, scheduler_gamma=0.9):
         assert device in ['cpu', 'cuda'], "device must be either 'cpu' or 'cuda'"
 
         self.actor = Actor(obs_size).to(device)
@@ -95,9 +95,18 @@ class TD3ColDeductiveAgent:
         self.actual_batch_size = batch_size - self.exp_batch_size
 
         self.device = device
-        self.save_path = save_path
 
         self.ou_noise = OUNoise(2, sigma=act_noise)
+
+        #Training variables
+        self.pre_tr_step = 0
+        self.change_lr = True
+        self.tr_step = 0
+        self.tr_steps_vec = []
+        self.avg_reward_vec = []
+        self.std_reward_vec = []
+        self.success_rate_vec = []
+        self.episode_nb = 0
 
     def select_action(self, obs, prev_action, eval=False):
         emb, command = obs
@@ -237,6 +246,6 @@ class TD3ColDeductiveAgent:
         for d in data:
             self.expert_buffer.store_transition(d)
 
-    def save(self):
-        with open(self.save_path, 'wb') as f:
+    def save(self, save_path):
+        with open(save_path, 'wb') as f:
             pickle.dump(self, f)

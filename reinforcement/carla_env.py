@@ -163,7 +163,7 @@ class Route:
         return math.sqrt((self.end.location.x - loc.x)**2 + (self.end.location.y - loc.y)**2)
     
     def is_oversteer(self, rotation):
-        dalpha = 5
+        dalpha = 75
         if self.orientation == 'N':
             return 90-dalpha < rotation.yaw < 90+dalpha
         elif self.orientation == 'S':
@@ -196,6 +196,7 @@ class CarlaEnv:
         self.world.set_weather(getattr(carla.WeatherParameters, weather, carla.WeatherParameters.ClearNoon))
 
         settings = self.world.get_settings()
+        self.original_settings = self.world.get_settings()
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = tick
         self.world.apply_settings(settings)
@@ -405,12 +406,10 @@ class CarlaEnv:
                 reward += (d_road/worst_d)**beta - 1
 
         #Obstacle distance
-        min_dist = math.inf
         for vehicle in self.vehicles:
             if vehicle.is_alive:
                 loc = vehicle.get_location()
                 dist = math.sqrt((loc.x-ego_loc.x)**2 + (loc.y-ego_loc.y)**2 + (loc.z-ego_loc.z)**2)
-                min_dist = min(min_dist, dist)
                 if dist < obstacle_radius:
                     reward += (dist/obstacle_radius)**beta - 1
 
@@ -418,17 +417,17 @@ class CarlaEnv:
         frame, d_leading = self.obs.obstacle_dist
         if abs(frame-self.frame)>2:
             d_leading = math.inf
-        if d_leading < obstacle_radius+2:
-            reward += 10*((d_leading/(obstacle_radius+2))**beta - 1)
+        if d_leading < 5.0:
+            reward += 10*((d_leading/(4.0))**beta - 1)
 
         #No movement
-        if min_dist > 4.0 and kmh < 2:
+        if d_leading > 5.0 and kmh < 2:
             reward += -10
 
         #Steer differ from movement
         factor = 10
         min_steer = 0.1
-        if self.current_movement == 0:
+        if self.current_movement == 0 and kmh > 2:
             if act[0] < -min_steer:
                 reward += factor
             elif act[0] <= 0.0:
@@ -437,7 +436,7 @@ class CarlaEnv:
                 reward += -factor*(act[0]/min_steer)**(1/beta)
             else:
                 reward += -factor
-        elif self.current_movement == 2:
+        elif self.current_movement == 2 and kmh > 2:
             if act[0] >= min_steer:
                 reward += factor
             elif act[0] >= 0.0:
@@ -632,3 +631,6 @@ class CarlaEnv:
             self.world.set_weather(weather)
         except:
             print(f"Weather {weather_id} not found")
+
+    def reset_settings(self):
+        self.world.apply_settings(self.original_settings)

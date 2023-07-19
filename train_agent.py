@@ -10,33 +10,31 @@ from reinforcement.carla_env import CarlaEnv, Route
 from reinforcement.agent import TD3ColDeductiveAgent
 from models.autoencoder import Autoencoder, AutoencoderSEM
 
-def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_steps, nb_training_steps, data_path):
-    print(f"Pretraining... {nb_pretraining_steps} steps")
-    for i in range(nb_pretraining_steps):
-        agent.update_step(i, True)
-    agent.save()
+def train_agent(env, encoder, weather_list, agent, nb_pretraining_steps, nb_training_steps, save_folder, freq_eval, route_id):
+    print(f"Pretraining... {nb_pretraining_steps-agent.pre_tr_step} steps")
+    for agent.pre_tr_step in range(agent.pre_tr_step, nb_pretraining_steps):
+        agent.update_step(agent.pre_tr_step, True)
+    agent.save(os.path.join(save_folder, "agent.pkl"))
     print("Pretraining done")
 
     print(f"Training... {nb_training_steps} steps")
-    if nb_pretraining_steps > 0:
+    if agent.change_lr:
         agent.change_opt_lr(1e-4, 1e-3)
+        agent.change_lr = False
 
-    tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec = [], [], [], []
     evaluate = False
 
-    # avg_reward, std_reward, success_rate = test_agent(env, encoder, num_routes, weather_list, agent)
-    # tr_steps_vec.append(0)
-    # avg_reward_vec.append(avg_reward)
-    # std_reward_vec.append(std_reward)
-    # success_rate_vec.append(success_rate)
+    avg_reward, std_reward, success_rate = test_agent(env, encoder, weather_list, agent, route_id)
+    agent.tr_steps_vec.append(0)
+    agent.avg_reward_vec.append(avg_reward)
+    agent.std_reward_vec.append(std_reward)
+    agent.success_rate_vec.append(success_rate)
 
     done = False
-    episode_nb = 0
     episode_reward = 0
     episode_steps = 0
 
-    route_id = episode_nb%num_routes
-    weather = weather_list[episode_nb//num_routes]
+    weather = weather_list[agent.episode_nb%len(weather_list)]
 
     env.set_weather(weather)
     obs = env.reset(route_id)
@@ -49,17 +47,16 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
     without_noise = False
     updates = 0
 
-    for tr_step in range(nb_training_steps):
+    for agent.tr_step in range(agent.tr_step, nb_training_steps):
 
-        if (tr_step+1)% (nb_training_steps / 25) == 0:
+        if (agent.tr_step+1)% freq_eval == 0:
             evaluate = True
 
-        if (tr_step+1)%1000 == 0 and (tr_step+1) < 300000:
+        if (agent.tr_step+1)%1000 == 0 and (agent.tr_step+1) < 300000:
             without_noise = not without_noise
             print("Without Noise" if without_noise else "With Noise")
-        if (tr_step+1) >= 300000:
+        if (agent.tr_step+1) >= 300000:
             without_noise = True
-            print("Without Noise")
 
         act = agent.select_action(obs, prev_act, eval=without_noise)
         obs_t1, reward, done, _ = env.step(act)
@@ -70,7 +67,7 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
 
         agent.store_transition(prev_act, obs, act, reward, obs_t1, done)
 
-        if tr_step > 256 and tr_step%5 == 0:
+        if agent.tr_step > 256 and agent.tr_step%2 == 0:
             agent.update_step(updates, False)
             updates += 1
 
@@ -81,31 +78,31 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
 
         if done:
             print('Global training step %5d | Training episode %5d | Steps: %4d | Reward: %4d | Success: %5r' % \
-                        (tr_step + 1, episode_nb + 1, episode_steps, episode_reward, reward>=450))
-            episode_nb += 1
+                        (agent.tr_step + 1, agent.episode_nb + 1, episode_steps, episode_reward, reward>=450))
+            agent.episode_nb += 1
             done = False
             episode_reward = 0
             episode_steps = 0
 
-            agent.save()
-            with open(data_path, 'wb') as f:
-                pickle.dump((tr_steps_vec, avg_reward_vec, std_reward_vec, success_rate_vec), f)
+            agent.save(os.path.join(save_folder, "agent.pkl"))
+            with open(os.path.join(save_folder, "data.pkl"), 'wb') as f:
+                pickle.dump((agent.tr_steps_vec, agent.avg_reward_vec, agent.std_reward_vec, agent.success_rate_vec), f)
 
             if evaluate:
-                avg_reward, std_reward, success_rate = test_agent(env, encoder, num_routes, weather_list, agent)
-                tr_steps_vec.append(tr_step+1)
-                avg_reward_vec.append(avg_reward)
-                std_reward_vec.append(std_reward)
-                success_rate_vec.append(success_rate)
+                avg_reward, std_reward, success_rate = test_agent(env, encoder, weather_list, agent, route_id)
+                agent.tr_steps_vec.append(agent.tr_step+1)
+                agent.avg_reward_vec.append(avg_reward)
+                agent.std_reward_vec.append(std_reward)
+                agent.success_rate_vec.append(success_rate)
 
                 done = False
                 episode_reward = 0
                 episode_steps = 0
 
                 evaluate = False
+                agent.save(os.path.join(save_folder, f"agent_{agent.tr_step+1}_steps.pkl"))
 
-            route_id = episode_nb%num_routes
-            weather = weather_list[(episode_nb%(num_routes*len(weather_list)))//num_routes]
+            weather = weather_list[(agent.episode_nb%len(weather_list))]
 
             env.set_weather(weather)
             obs = env.reset(route_id)
@@ -116,16 +113,15 @@ def train_agent(env, encoder, num_routes, weather_list, agent, nb_pretraining_st
             prev_act = [0.,0.]
             agent.reset_noise()
 
-def test_agent(env, encoder, num_routes, weather_list, agent):
+def test_agent(env, encoder, weather_list, agent, route_id):
     ep_rewards = []
     success_rate = 0
     avg_steps = 0
 
-    nb_episodes = num_routes*len(weather_list)
+    nb_episodes = 3*len(weather_list)
 
     for episode in range(nb_episodes):
-        route_id = episode%num_routes
-        weather = weather_list[episode//num_routes]
+        weather = weather_list[episode%len(weather_list)]
 
         env.set_weather(weather)
         obs = env.reset(route_id)
@@ -184,10 +180,12 @@ if __name__=='__main__':
     argparser.add_argument('--autoencoder_model', type=str, help="Autoencoder model path", required=True)
     
     argparser.add_argument('--device', type=str, default='cuda', help="Device to use for training", choices=['cuda', 'cpu'])
-    argparser.add_argument('--pre_steps', type=int, default=5000, help="Number of steps of pretraining")
-    argparser.add_argument('--steps', type=int, default=500000, help="Number of steps of training")
+    argparser.add_argument('--pre_steps', type=int, default=2000, help="Number of steps of pretraining")
+    argparser.add_argument('--steps', type=int, default=1000000, help="Number of steps of training")
     argparser.add_argument('--save_folder', type=str, default='./agent', help="Path to save the agent and data")
     argparser.add_argument('--exp_data', type=str, default='exp_data.pkl', help="Path of the expert data")
+    argparser.add_argument('--freq_eval', type=int, default=10000, help="Frequency of evaluation")
+    argparser.add_argument('--route_id', type=int, default=0, help="Route id to use for training")
 
     args = argparser.parse_args()
 
@@ -198,7 +196,6 @@ if __name__=='__main__':
 
     os.makedirs(args.save_folder, exist_ok=True)
     save_agent_path = os.path.join(args.save_folder, 'agent.pkl')
-    save_data_path = os.path.join(args.save_folder, 'data.pkl')
 
     if args.sem:
         autoencoder = AutoencoderSEM.load_from_checkpoint(args.autoencoder_model)
@@ -211,7 +208,7 @@ if __name__=='__main__':
 
     env = CarlaEnv(args.world_port, args.host, 'Town01', 'ClearNoon',
                  args.cam_height, args.cam_width, args.fov, args.nb_vehicles, args.tick,
-                 nb_frames_max=2000)
+                 nb_frames_max=1000)
     
     num_routes = len(Route.get_possibilities('Town01'))
     weather_list = ['ClearNoon', 'WetNoon', 'HardRainNoon', 'ClearSunset']
@@ -222,15 +219,13 @@ if __name__=='__main__':
     else:
         agent = TD3ColDeductiveAgent(obs_size=256, device=args.device, actor_lr=1e-3, critic_lr=1e-3,
                     pol_freq_update=2, policy_noise=0.2, noise_clip=0.5, act_noise=0.1, gamma=0.99,
-                    tau=0.005, l2_reg=1e-5, env_steps=8, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
-                    exp_buff_size=40000, actor_buffer_size=20000, exp_prop=0.25, batch_size=64,
-                    save_path=save_agent_path, scheduler_step_size=350, scheduler_gamma=0.9)
+                    tau=0.005, l2_reg=1e-5, env_steps=10, env_w=0.2, lambda_bc=0.1, lambda_a=0.9, lambda_q=1.0,
+                    exp_buff_size=20000, actor_buffer_size=20000, exp_prop=0.25, batch_size=64,
+                    scheduler_step_size=350, scheduler_gamma=0.9)
         
         with open(args.exp_data, 'rb') as f:
             exp_data = pickle.load(f)
 
         agent.load_exp_buffer(exp_data)
 
-    train_agent(env, encoder, num_routes, weather_list, agent, args.pre_steps, args.steps, save_data_path)
-    
-    
+    train_agent(env, encoder, weather_list, agent, args.pre_steps, args.steps, args.save_folder, args.freq_eval, args.route_id)
