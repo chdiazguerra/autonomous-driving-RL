@@ -3,42 +3,45 @@ from torch.utils.data import Dataset
 from torchvision.io import read_image
 from torchvision import transforms
 from .utils import low_resolution_semantics
-
-
+   
 class AutoencoderDataset(Dataset):
-    def __init__(self, data, resize=None, normalize=True, low_sem=False):
-        self.data = data
-        self.resize = resize
+    def __init__(self, data, resize=None, normalize=True, low_sem=True):
+        self.images = []
+        self.semantics = []
+        self.data = []
+        self.junctions = []
+
+        i = 0
+        for _, rgb, depth_image, semantic_image, additional, junction in data:
+            if i%200==0:
+                print("Loading data: ", i)
+            image = torch.cat((read_image(rgb), read_image(depth_image)), dim=0)
+            semantic = read_image(semantic_image)
+            if resize:
+                image = transforms.Resize(resize)(image)
+                semantic = transforms.Resize(resize, transforms.InterpolationMode.NEAREST)(semantic)
+            if low_sem:
+                low_resolution_semantics(semantic)
+            semantic = semantic.squeeze()
+            data = torch.FloatTensor(additional)
+            self.images.append(image)
+            self.semantics.append(semantic)
+            self.data.append(data)
+            self.junctions.append(junction)
+            i += 1
+
         self.normalize = normalize
-        self.low_sem = low_sem
 
     def __len__(self):
-        return len(self.data)
+        return len(self.images)
     
     def __getitem__(self, idx):
-        sample = self.data[idx]
-        camera = read_image(sample['CAMERA'])
-        depth = read_image(sample['DEPTH'])
-        semantic = read_image(sample['SEMANTIC'])
-
-        if self.resize:
-            camera = transforms.Resize(self.resize)(camera)
-            depth = transforms.Resize(self.resize)(depth)
-            semantic = transforms.Resize(self.resize, transforms.InterpolationMode.NEAREST)(semantic)
-
-        if self.low_sem:
-            low_resolution_semantics(semantic)
+        image = self.images[idx].to(torch.float32)
+        semantic = self.semantics[idx].to(torch.long)
+        data = self.data[idx]
+        junction = torch.FloatTensor([self.junctions[idx]])
 
         if self.normalize:
-            camera = camera / 255.0
-            depth = depth / 255.0
-
-        image = torch.cat((camera, depth), dim=0).to(torch.float32)
-
-        semantic = semantic.to(torch.long).squeeze()
-
-        data = torch.FloatTensor(sample['DATA'])
-
-        junction = torch.FloatTensor([sample['JUNCTION']])
+            image /= 255.0
 
         return image, semantic, data, junction

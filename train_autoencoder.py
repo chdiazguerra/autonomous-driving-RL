@@ -26,9 +26,11 @@ def main(args):
         with open(args.file, 'rb') as f:
             data = pickle.load(f)
 
+        stratify = [d[0] for d in data]
+
         # Split data stratify by folder (different weather conditions)
         train, val = train_test_split(data, test_size=args.val_size, random_state=42,
-                                    shuffle=True, stratify=[d['IDX'] for d in data])
+                                    shuffle=True, stratify=stratify)
         
         #Save split
         with open(args.dirpath + '/split.pkl', 'wb') as f:
@@ -51,7 +53,9 @@ def main(args):
         model = Autoencoder(img_size, args.emb_size, num_classes, args.lr)
 
     # Train model
-    trainer = pl.Trainer(callbacks=[pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, monitor='val_loss', save_top_k=1)],
+    trainer = pl.Trainer(callbacks=[pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, monitor='val_loss', save_top_k=1),
+                                    pl.callbacks.LearningRateMonitor(logging_interval='epoch'),
+                                    pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, filename="{epoch}")],
                          logger=args.no_logger,
                          accelerator=args.device,
                          max_epochs=args.epochs,
@@ -62,7 +66,7 @@ def main(args):
 if __name__=='__main__':
     parser = ArgumentParser()
     parser.add_argument('--file', type=str, default='dataset.pkl', help='dataset file')
-    parser.add_argument('--val_size', type=float, default=0.1, help='validation size')
+    parser.add_argument('--val_size', type=float, default=0.2, help='validation size')
     parser.add_argument('--img_size', type=str, default='default', help='image size')
     parser.add_argument('-no_norm', action='store_false', help='Not normalize input image')
     parser.add_argument('--emb_size', type=int, default=256, help='embedding size')

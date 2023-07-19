@@ -24,11 +24,12 @@ def train_agent(env, encoder, weather_list, agent, nb_pretraining_steps, nb_trai
 
     evaluate = False
 
-    avg_reward, std_reward, success_rate = test_agent(env, encoder, weather_list, agent, route_id)
-    agent.tr_steps_vec.append(0)
-    agent.avg_reward_vec.append(avg_reward)
-    agent.std_reward_vec.append(std_reward)
-    agent.success_rate_vec.append(success_rate)
+    if agent.tr_step == 0:
+        avg_reward, std_reward, success_rate = test_agent(env, encoder, weather_list, agent, route_id)
+        agent.tr_steps_vec.append(0)
+        agent.avg_reward_vec.append(avg_reward)
+        agent.std_reward_vec.append(std_reward)
+        agent.success_rate_vec.append(success_rate)
 
     done = False
     episode_reward = 0
