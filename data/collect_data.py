@@ -3,13 +3,13 @@ import math
 import random
 from argparse import ArgumentParser
 import pickle
-import queue
 
 import numpy as np
 import cv2
 import carla
 
-from utils import to_rgb_array, depth_to_array, labels_to_array, distance_from_center, depth_to_logarithmic_grayscale, dist_to_roadline
+from data.utils import to_rgb_array, depth_to_array, labels_to_array, distance_from_center, depth_to_logarithmic_grayscale, dist_to_roadline
+from configuration.config import *
 
 class Observation:
     def __init__(self, save_path, save_np=False):
@@ -51,35 +51,45 @@ def obstacle_callback(event, obs):
     else:
         obs.obstacle_dist = (frame, 25.)
 
-def setup_sensors(ego_vehicle, blueprint_library, obs, args):
+def get_spectator_transform(vehicle_transform, d=7):
+    vehicle_transform.location.z += 3
+    vehicle_transform.location.x += -d*math.cos(math.radians(vehicle_transform.rotation.yaw))
+    vehicle_transform.location.y += -d*math.sin(math.radians(vehicle_transform.rotation.yaw))
+    vehicle_transform.rotation.pitch += -20
+    return vehicle_transform
+
+def setup_sensors(ego_vehicle, blueprint_library, obs, world):
     sensors = []
     #Create sensors
     camera_bp = blueprint_library.find('sensor.camera.rgb')
-    camera_bp.set_attribute('image_size_x', str(args.cam_width))
-    camera_bp.set_attribute('image_size_y', str(args.cam_height))
-    camera_bp.set_attribute('fov', str(args.fov))
-    camera_bp.set_attribute('sensor_tick', str(0.05))
-    camera_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
+    camera_bp.set_attribute('image_size_x', str(CAM_WIDTH))
+    camera_bp.set_attribute('image_size_y', str(CAM_HEIGHT))
+    camera_bp.set_attribute('fov', str(CAM_FOV))
+    camera_bp.set_attribute('sensor_tick', str(TICK))
+    camera_transform = carla.Transform(carla.Location(x=CAM_POS_X, y=CAM_POS_Y , z=CAM_POS_Z),
+                                      carla.Rotation(pitch=CAM_PITCH, yaw=CAM_YAW, roll=CAM_ROLL))
     camera = world.spawn_actor(camera_bp, camera_transform, attach_to=ego_vehicle)
     camera.listen(lambda data: camera_callback(data, obs))
     sensors.append(camera)
 
     depth_bp = blueprint_library.find('sensor.camera.depth')
-    depth_bp.set_attribute('image_size_x', str(args.cam_width))
-    depth_bp.set_attribute('image_size_y', str(args.cam_height))
-    depth_bp.set_attribute('fov', str(args.fov))
-    depth_bp.set_attribute('sensor_tick', str(0.05))
-    depth_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
+    depth_bp.set_attribute('image_size_x', str(CAM_WIDTH))
+    depth_bp.set_attribute('image_size_y', str(CAM_HEIGHT))
+    depth_bp.set_attribute('fov', str(CAM_FOV))
+    depth_bp.set_attribute('sensor_tick', str(TICK))
+    depth_transform = carla.Transform(carla.Location(x=CAM_POS_X, y=CAM_POS_Y , z=CAM_POS_Z),
+                                      carla.Rotation(pitch=CAM_PITCH, yaw=CAM_YAW, roll=CAM_ROLL))
     depth = world.spawn_actor(depth_bp, depth_transform, attach_to=ego_vehicle)
     depth.listen(lambda data: depth_callback(data, obs))
     sensors.append(depth)
 
     semantic_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
-    semantic_bp.set_attribute('image_size_x', str(args.cam_width))
-    semantic_bp.set_attribute('image_size_y', str(args.cam_height))
-    semantic_bp.set_attribute('fov', str(args.fov))
-    semantic_bp.set_attribute('sensor_tick', str(0.05))
-    semantic_transform = carla.Transform(carla.Location(x=0.8, z=1.7))
+    semantic_bp.set_attribute('image_size_x', str(CAM_WIDTH))
+    semantic_bp.set_attribute('image_size_y', str(CAM_HEIGHT))
+    semantic_bp.set_attribute('fov', str(CAM_FOV))
+    semantic_bp.set_attribute('sensor_tick', str(TICK))
+    semantic_transform = carla.Transform(carla.Location(x=CAM_POS_X, y=CAM_POS_Y , z=CAM_POS_Z),
+                                      carla.Rotation(pitch=CAM_PITCH, yaw=CAM_YAW, roll=CAM_ROLL))
     semantic = world.spawn_actor(semantic_bp, semantic_transform, attach_to=ego_vehicle)
     semantic.listen(lambda data: semantic_callback(data, obs))
     sensors.append(semantic)
@@ -87,36 +97,14 @@ def setup_sensors(ego_vehicle, blueprint_library, obs, args):
     obstacle_bp = blueprint_library.find('sensor.other.obstacle')
     obstacle_bp.set_attribute('only_dynamics', 'False')
     obstacle_bp.set_attribute('distance', '20')
-    obstacle_bp.set_attribute('sensor_tick', str(0.05))
+    obstacle_bp.set_attribute('sensor_tick', str(TICK))
     obstacle_transform = carla.Transform()
     obstacle = world.spawn_actor(obstacle_bp, obstacle_transform, attach_to=ego_vehicle)
     obstacle.listen(lambda data: obstacle_callback(data, obs))
     sensors.append(obstacle)
     return sensors
 
-if __name__=='__main__':
-    argparser = ArgumentParser()
-    argparser.add_argument('--world-port', type=int, default=2000)
-    argparser.add_argument('--host', type=str, default='localhost')
-    argparser.add_argument('--map', type=str, default="Town01", help="Load the map before starting the simulation")
-    argparser.add_argument('--weather', type=str, default='ClearNoon',
-                           choices=['ClearNoon', 'ClearSunset', 'CloudyNoon', 'CloudySunset',
-                                    'WetNoon', 'WetSunset', 'MidRainyNoon', 'MidRainSunset',
-                                    'WetCloudyNoon', 'WetCloudySunset', 'HardRainNoon',
-                                    'HardRainSunset', 'SoftRainNoon', 'SoftRainSunset'],
-                                    help='Weather preset')
-    argparser.add_argument('--cam_height', type=int, default=256, help="Camera height")
-    argparser.add_argument('--cam_width', type=int, default=256, help="Camera width")
-    argparser.add_argument('--fov', type=int, default=100, help="Camera field of view")
-    argparser.add_argument('--out_folder', type=str, default='./sensor_data', help="Output folder")
-    argparser.add_argument('--nb_frames', type=int, default=300, help="Number of frames to record per route")
-    argparser.add_argument('--nb_passes', type=int, default=10, help="Number of passes per route")
-    argparser.add_argument('--freq_save', type=int, default=5, help="Frequency of saving data (in steps)")
-    argparser.add_argument('-np', action='store_true', help='Save data as numpy arrays instead of images')
-    argparser.add_argument('--begin', type=int, default=0, help='Begin at this episode (for resuming)')
-
-    args = argparser.parse_args()
-
+def main(args):
     #Create output directory
     os.makedirs(args.out_folder, exist_ok=True)
     camera_path = os.path.join(args.out_folder, 'camera')
@@ -134,7 +122,11 @@ if __name__=='__main__':
     vehicles = []
     ego_vehicle = None
     original_settings = None
-    info = {}
+    if os.path.exists(f"{args.out_folder}/info.pkl"):
+        with open(f"{args.out_folder}/info.pkl", 'rb') as f:
+            info = pickle.load(f)
+    else:
+        info = {}
     try:
         #Connect client to server
         client = carla.Client(args.host, args.world_port)
@@ -146,7 +138,7 @@ if __name__=='__main__':
         world.set_weather(weather)
         settings = world.get_settings()
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = 0.05
+        settings.fixed_delta_seconds = TICK
         world.apply_settings(settings)
         blueprint_library = world.get_blueprint_library()
         spawn_points = world.get_map().get_spawn_points()
@@ -159,7 +151,7 @@ if __name__=='__main__':
         traffic_manager.set_hybrid_physics_mode(False)
 
         #Vehicle blueprint
-        vehicle_bp = blueprint_library.find('vehicle.audi.a2')
+        vehicle_bp = blueprint_library.find(EGO_BP)
 
         #Routes
         routes = [73, 14, 61, 241, 1, 167, 71, 233, 176, 39]
@@ -178,16 +170,18 @@ if __name__=='__main__':
             print("Episode %d" % episode)
             route_id = episode % len(routes)
             ego_vehicle = world.try_spawn_actor(vehicle_bp, spawn_points[routes[route_id]])
-            traffic_manager.set_desired_speed(ego_vehicle, 25.)
+            traffic_manager.set_desired_speed(ego_vehicle, 35.)
             traffic_manager.ignore_lights_percentage(ego_vehicle, 100.)
             traffic_manager.random_left_lanechange_percentage(ego_vehicle, 0)
             traffic_manager.random_right_lanechange_percentage(ego_vehicle, 0)
             traffic_manager.auto_lane_change(ego_vehicle, False)
+            traffic_manager.distance_to_leading_vehicle(ego_vehicle, 1.0)
             ego_vehicle.set_autopilot(True, tfm_port)
 
             for spawn_id in spawns[route_id]:
                 if np.random.uniform(0., 1.0) < 0.7:
-                    vehicle = world.try_spawn_actor(vehicle_bp, spawn_points[spawn_id])
+                    bp = blueprint_library.find(random.choice(EXO_BP))
+                    vehicle = world.try_spawn_actor(bp, spawn_points[spawn_id])
                     if vehicle is not None:
                         traffic_manager.set_desired_speed(vehicle, 20.)
                         traffic_manager.ignore_lights_percentage(vehicle, 25.)
@@ -195,8 +189,7 @@ if __name__=='__main__':
                         vehicles.append(vehicle)
 
             obs = Observation(args.out_folder, args.np)
-            sensors = setup_sensors(ego_vehicle, blueprint_library, obs, args)
-            camera = sensors[0]
+            sensors = setup_sensors(ego_vehicle, blueprint_library, obs, world)
 
             for _ in range(10):
                 world.tick()
@@ -204,22 +197,17 @@ if __name__=='__main__':
             noise_steps = 0
             for i in range(args.nb_frames):
                 control = ego_vehicle.get_control()
-                if i % 48 == 0:
+                if i % 28 == 0:
                     noise_steps = 0
 
-                if noise_steps <= 5:
+                if noise_steps <= 7:
                     control.steer += np.random.normal(0.0, 0.05)
-                    if control.throttle > 0.0:
-                        control.throttle += np.random.normal(0.0, 0.05)
-                    else:
-                        control.brake += np.random.normal(0.0, 0.05)
                     noise_steps += 1
                 ego_vehicle.apply_control(control)
 
                 w_frame = world.tick()
 
-                transform = camera.get_transform()
-                spectator.set_transform(transform)
+                spectator.set_transform(get_spectator_transform(ego_vehicle.get_transform()))
 
                 car_loc = ego_vehicle.get_location()
                 current_wp = carla_map.get_waypoint(car_loc)

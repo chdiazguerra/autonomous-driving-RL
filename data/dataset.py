@@ -5,7 +5,8 @@ from torchvision import transforms
 from .utils import low_resolution_semantics
    
 class AutoencoderDataset(Dataset):
-    def __init__(self, data, resize=None, normalize=True, low_sem=True):
+    def __init__(self, data, resize=None, normalize=True, low_sem=True,
+                 use_img_as_output=False, normalize_output=False):
         self.images = []
         self.semantics = []
         self.data = []
@@ -31,17 +32,28 @@ class AutoencoderDataset(Dataset):
             i += 1
 
         self.normalize = normalize
+        self.use_img_as_output = use_img_as_output
+        self.normalize_output = normalize_output
+        self.low_sem = low_sem
 
     def __len__(self):
         return len(self.images)
     
     def __getitem__(self, idx):
         image = self.images[idx].to(torch.float32)
-        semantic = self.semantics[idx].to(torch.long)
+        if self.use_img_as_output:
+            output = torch.clone(image)
+            if self.normalize_output:
+                output /= 255.0
+        else:
+            output = self.semantics[idx].to(torch.long)
+            if self.normalize_output:
+                output = output.to(torch.float32)
+                output = output / 13. if self.low_sem else output / 28.
         data = self.data[idx]
         junction = torch.FloatTensor([self.junctions[idx]])
 
         if self.normalize:
             image /= 255.0
 
-        return image, semantic, data, junction
+        return image, output, data, junction

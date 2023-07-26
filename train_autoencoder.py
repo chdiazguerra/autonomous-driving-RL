@@ -9,6 +9,8 @@ import pytorch_lightning as pl
 
 from data.dataset import AutoencoderDataset
 from models.autoencoder import Autoencoder, AutoencoderSEM
+from models.vae import VAE
+from configuration.config import *
 
 def main(args):
     os.makedirs(args.dirpath, exist_ok=True)
@@ -35,10 +37,12 @@ def main(args):
         #Save split
         with open(args.dirpath + '/split.pkl', 'wb') as f:
             pickle.dump({'train': train, 'val': val}, f)
+
     
+    normalize_output = False if args.model == 'AutoencoderSEM' else True
     # Create datasets
-    train_dataset = AutoencoderDataset(train, img_size, args.no_norm, args.low_sem)
-    val_dataset = AutoencoderDataset(val, img_size, args.no_norm, args.low_sem)
+    train_dataset = AutoencoderDataset(train[:100], img_size, args.norm_input, args.low_sem, args.use_img_out, normalize_output)
+    val_dataset = AutoencoderDataset(val[:100], img_size, args.norm_input, args.low_sem, args.use_img_out, normalize_output)
 
     # Create dataloaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -47,16 +51,23 @@ def main(args):
     # Create model
     img_size = tuple(train_dataset[0][0].shape[1:]) if img_size is None else img_size
     num_classes = 14 if args.low_sem else 29
-    if args.sem:
-        model = AutoencoderSEM(img_size, args.emb_size, num_classes, args.lr)
+    
+    if args.model == 'Autoencoder':
+        model = Autoencoder(input_size=img_size, emb_size=args.emb_size, lr=args.lr, weights=(0.8, 0.1, 0.1),
+                            use_additional_data=args.additional_data, out_ch=4 if args.use_img_out else 1)
+    elif args.model == 'AutoencoderSEM':
+        model = AutoencoderSEM(input_size=img_size, emb_size=args.emb_size, lr=args.lr, weights=(0.8, 0.1, 0.1),
+                            use_additional_data=args.additional_data, num_classes=num_classes)
+    elif args.model == 'VAE':
+        model = VAE(input_size=img_size, emb_size=args.emb_size, lr=args.lr,
+                            out_ch=4 if args.use_img_out else 1)
     else:
-        model = Autoencoder(img_size, args.emb_size, num_classes, args.lr)
+        raise ValueError('Model not found')
 
     # Train model
     trainer = pl.Trainer(callbacks=[pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, monitor='val_loss', save_top_k=1),
                                     pl.callbacks.LearningRateMonitor(logging_interval='epoch'),
                                     pl.callbacks.ModelCheckpoint(dirpath=args.dirpath, filename="{epoch}")],
-                         logger=args.no_logger,
                          accelerator=args.device,
                          max_epochs=args.epochs,
                          default_root_dir=args.dirpath)
@@ -65,21 +76,25 @@ def main(args):
 
 if __name__=='__main__':
     parser = ArgumentParser()
-    parser.add_argument('--file', type=str, default='dataset.pkl', help='dataset file')
-    parser.add_argument('--val_size', type=float, default=0.2, help='validation size')
-    parser.add_argument('--img_size', type=str, default='default', help='image size')
-    parser.add_argument('-no_norm', action='store_false', help='Not normalize input image')
-    parser.add_argument('--emb_size', type=int, default=256, help='embedding size')
-    parser.add_argument('-low_sem', action='store_true', help='Use low resolution semantic segmentation (14 classes)')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch size')
-    parser.add_argument('--epochs', type=int, default=200, help='number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--file', type=str, default=AE_DATASET_FILE, help='dataset file')
+    parser.add_argument('--val_size', type=float, default=AE_VAL_SIZE, help='validation size')
+    parser.add_argument('--img_size', type=str, default=AE_IMG_SIZE, help='image size')
+
+    parser.add_argument('--norm_input', type=bool, default=AE_NORM_INPUT, help='Normalize input image')
+    parser.add_argument('--emb_size', type=int, default=AE_EMB_SIZE, help='embedding size')
+    parser.add_argument('--batch_size', type=int, default=AE_BATCH_SIZE, help='batch size')
+    parser.add_argument('--epochs', type=int, default=AE_EPOCHS, help='number of epochs')
+    parser.add_argument('--lr', type=float, default=AE_LR, help='learning rate')
     parser.add_argument('--device', type=str, default='auto', help='device', choices=['auto', 'gpu', 'cpu'])
-    parser.add_argument('--dirpath', type=str, default='./bestModel', help='directory path to save the model')
-    parser.add_argument('-no_logger', action='store_false', help='Not use logger')
-    parser.add_argument('-sem', action='store_true', help='Use Autoencoder with cross entropy loss for semantic segmentation')
-    parser.add_argument('--pretrained', type=str, default=None, help='pretrained model')
-    parser.add_argument('--split', type=str, default=None, help='split file')
+    parser.add_argument('--dirpath', type=str, default=AE_DIRPATH, help='directory path to save the model')
+
+    parser.add_argument('--low_sem', type=bool, default=AE_LOW_SEM, help='Use low resolution semantic segmentation (14 classes)')
+    parser.add_argument('--use_img_out', type=bool, default=AE_USE_IMG_AS_OUTPUT, help='Use image as output (not used if model is VAE)')
+    parser.add_argument('--model', type=str, default=AE_MODEL, help='model', choices=['Autoencoder', 'AutoencoderSEM', 'VAE'])
+    parser.add_argument('--additional_data', type=bool, default=AE_ADDITIONAL_DATA, help='Use additional data (not used if model is VAE)')
+
+    parser.add_argument('--pretrained', type=str, default=AE_PRETRAINED, help='pretrained model')
+    parser.add_argument('--split', type=str, default=AE_SPLIT, help='split file')
     args = parser.parse_args()
 
     main(args)
