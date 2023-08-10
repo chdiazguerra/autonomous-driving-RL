@@ -5,23 +5,22 @@ import torch
 class ReplayBuffer(object):
     """Buffer to store tuples of experience replay"""
     
-    def __init__(self, max_size=20000, device='cpu'):
+    def __init__(self, max_size=20000):
         """
         Args:
             max_size (int): total amount of tuples to store
         """
-        assert device in ['cpu', 'cuda'], "device must be either 'cpu' or 'cuda'"
         
         self.storage = []
         self.max_size = max_size
         self.ptr = 0
-        self.device = device
 
-    def store_transition(self, data):
+    def add(self, data):
         """Add experience tuples to buffer
+        (state, action, reward, next_state, done)
         
         Args:
-            data (tuple): experience replay tuple (prev_act, obs, action, reward, next_obs, done)
+            data (tuple): experience replay tuple
         """
         
         if len(self.storage) == self.max_size:
@@ -30,36 +29,33 @@ class ReplayBuffer(object):
         else:
             self.storage.append(data)
 
+    def __len__(self):
+        """Returns the current size of buffer
+        
+        Returns:
+            int: current size of buffer
+        """
+        
+        return len(self.storage)
+
     def sample(self, batch_size):
         """Samples a random amount of experiences from buffer of batch size
         
         Args:
             batch_size (int): size of sample
+        Returns:
+            tuple: states, actions, rewards, next_states, dones
         """
         
-        ind = np.random.choice(len(self.storage), size=batch_size, replace=False) #np.random.randint(0, len(self.storage), size=batch_size)
-        prev_actions, embs, commands, actions, rewards, embs_, commands_, dones = [], [], [], [], [], [], [], []
+        ind = np.random.choice(len(self.storage), size=batch_size, replace=False)
+        states, actions, next_states, rewards, dones = [], [], [], [], []
 
         for i in ind: 
-            pa, o, a, r, o_, d = self.storage[i]
-            emb, command = o
-            emb_, command_ = o_
-            prev_actions.append(pa)
-            embs.append(emb)
-            commands.append(command)
-            actions.append(a)
-            embs_.append(emb_)
-            commands_.append(command_)
-            rewards.append(r)
-            dones.append(d)
+            s, a, r, s_, d = self.storage[i]
+            states.append(np.array(s, copy=False, dtype=np.float32))
+            actions.append(np.array(a, copy=False, dtype=np.float32))
+            next_states.append(np.array(s_, copy=False, dtype=np.float32))
+            rewards.append(np.array(r, copy=False, dtype=np.float32))
+            dones.append(np.array(d, copy=False, dtype=np.float32))
 
-        prev_actions = torch.FloatTensor(prev_actions).to(self.device)
-        embs = torch.FloatTensor(np.concatenate(embs)).to(self.device)
-        commands = torch.LongTensor(commands).view(-1, 1).to(self.device)
-        actions = torch.FloatTensor(actions).to(self.device)
-        embs_ = torch.FloatTensor(np.concatenate(embs_)).to(self.device)
-        commands_ = torch.LongTensor(commands_).reshape(-1, 1).to(self.device)
-        rewards = torch.FloatTensor(rewards).reshape(-1, 1).to(self.device)
-        dones = torch.FloatTensor(dones).reshape(-1, 1).to(self.device)
-
-        return prev_actions, (embs, commands), actions, rewards, (embs_, commands_), dones
+        return np.array(states), np.array(actions), np.array(rewards).reshape(-1, 1), np.array(next_states), np.array(dones).reshape(-1, 1)

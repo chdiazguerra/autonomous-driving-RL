@@ -37,10 +37,34 @@ AE_EPOCHS = 200
 AE_LR = 1e-3
 AE_DIRPATH = '../AEModel'
 AE_SPLIT = None
-AE_PRETRAINED = None
+AE_PRETRAINED = '../autoencodersEntrenados/0/model.ckpt'
 
 AE_MODEL = 'AutoencoderSEM' #Autoencoder, AutoencoderSEM, VAE
 AE_LOW_SEM = True
 AE_USE_IMG_AS_OUTPUT = False
 AE_ADDITIONAL_DATA = True #Not used if model is VAE
 
+#Expert data
+EXPERT_DATA_FOLDER = '../datosExperto/noExoVehicles'
+
+#Agent Training
+AGENT_FOLDER = '../agents/ddpgColNoVehicles2'
+TRAIN_EPISODES = 340
+ROUTE_ID = 0
+USE_EXO_VEHICLES = False
+
+#DDPG Training
+DDPG_USE_EXPERT_DATA = True
+DDPG_EXPERT_DATA_FILE = '../datosExperto/noExoVehicles/Route_0.pkl'
+DDPG_PRETRAIN_STEPS = 1000
+DDPG_USE_ENV_MODEL = True
+DDPG_ENV_STEPS = 10
+DDPG_BATCH_SIZE = 64
+DDPG_NB_UPDATES = 5
+DDPG_NOISE_SIGMA = 0.2
+DDPG_SCH_STEPS = 5
+
+#SAC Training
+SAC_BATCH_SIZE = 64
+SAC_NB_UPDATES = 50
+SAC_ALPHA = 0.2
