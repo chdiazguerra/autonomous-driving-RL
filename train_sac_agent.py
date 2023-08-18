@@ -166,8 +166,8 @@ if __name__=='__main__':
             agent = pickle.load(f)
     else:
         agent = SACAgent(obs_dim=260, nb_actions=2, device='cpu', lr=1e-3, alpha=config.SAC_ALPHA,
-                 batch_size=config.SAC_BATCH_SIZE, gamma=0.95, tau=0.005, buffer_size=20000, action_clip=(-1,1),
-                 collision_percentage=0.2, sch_gamma = 0.9, sch_steps=500)    
+                 batch_size=config.SAC_BATCH_SIZE, gamma=0.99, tau=0.005, buffer_size=20000, action_clip=(-1,1),
+                 collision_percentage=0.2, sch_gamma = 0.9, sch_steps=config.SAC_SCH_STEPS)    
 
     try:
         train_agent(env, weather_list, agent, args.nb_episodes, args.save_folder, args.route_id, args.nb_updates)

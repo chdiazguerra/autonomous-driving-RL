@@ -28,11 +28,11 @@ class Route:
         self.orientation = orientation
         self.junc_ids = junc_ids #Junctions ids
         self.junc_movement = junc_movement #Movement to take at each junction
+        self.lims_num = 0
         self.max_distance = self.distance_to_goal(self.init.location) + 10
         self.spawn_points = spawn_points
         self.x_lims = x_lims
         self.y_lims = y_lims
-        self.lims_num = 0
         self.func_changed = func_changed
     
     @classmethod
@@ -121,10 +121,10 @@ class Route:
                                                        roll=0.0))
                         ]
 
-        x_lims = [[90, 120.5], [90, 96.4], [90.4, 94.4]]
-        y_lims = [[127.4, 131.4], [124.4, 131.4], [110.5, 131.4]]
+        x_lims = [[90, 120.5], [90, 97.4], [90.4, 94.4]]
+        y_lims = [[127.4, 131.4], [123.4, 131.4], [110.5, 131.4]]
 
-        func_changed = [lambda location: location.x<96.4, lambda location: location.y<125, lambda location: location.x>np.inf]
+        func_changed = [lambda location: location.x<97.4, lambda location: location.y<123.4, lambda location: location.x>np.inf]
 
         return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims, func_changed)
     
@@ -162,11 +162,136 @@ class Route:
         return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims, func_changed)
 
     @classmethod
+    def town2_1(cls):
+        init = carla.Transform(carla.Location(x=136.13+np.random.uniform(-0.5, 0.5), y=215.27, z=0.5),
+                               carla.Rotation(pitch=0.0, yaw=-90.0+np.random.uniform(-3.0, 3.0), roll=0.0))
+        end = carla.Transform(carla.Location(x=119.0, y=187.6, z=0.0),
+                        carla.Rotation(pitch=0.0, yaw=-180.0, roll=0.0))
+        
+        junc_ids = [298]
+        junc_movement = [0]
+
+        orientation = 'N'
+
+        spawn_points = [
+                        carla.Transform(carla.Location(x=135.88+np.random.uniform(-0.5, 0.5),
+                                                        y=200.0+np.random.uniform(0, 8),
+                                                        z=0.3),
+                                        carla.Rotation(pitch=0.0,
+                                                        yaw=-90.0+np.random.uniform(-3., 3.),
+                                                        roll=0.0)),
+                        carla.Transform(carla.Location(x=104.6+np.random.uniform(5.0, 15.0),
+                                                       y=191.78+np.random.uniform(-0.5, 0.5),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-0.0,
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=165.1+np.random.uniform(-5.0, -15.0),
+                                                       y=187.12+np.random.uniform(-0.5, 0.5),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-180,
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=132.0+np.random.uniform(-0.5, 0.5),
+                                                       y=201.17+np.random.uniform(0.0, 8.0),
+                                                       z=0.500000),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=90+np.random.uniform(-3., 3.),
+                                                       roll=0.0))
+                            ]
+        
+        x_lims = [[134.13, 138.13], [128.13, 138.13], [116.0, 138.13]]
+        y_lims = [[185.6, 220.0], [185.6, 195.6], [185.6, 189.6]]
+
+        func_changed = [lambda location: location.y<195.6,lambda location: location.x<128.13, lambda location: location.x>np.inf]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims, func_changed)
+    
+    @classmethod
+    def town2_2(cls):
+        init = carla.Transform(carla.Location(x=71.04, y=236.9+np.random.uniform(-0.5, 0.5), z=0.5),
+                               carla.Rotation(pitch=0.0, yaw=-180+np.random.uniform(-3.0, 3.0), roll=0.0))
+        end = carla.Transform(carla.Location(x=45.8, y=225.6, z=0.0),
+                              carla.Rotation(pitch=0.0, yaw=-90.0, roll=0.0))
+        
+        junc_ids = [76]
+        junc_movement = [2]
+
+        orientation = 'W'
+
+        spawn_points = [
+                        carla.Transform(carla.Location(x=45.0+np.random.uniform(4.0, 17.0),
+                                                       y=236.9+np.random.uniform(-0.5, 0.5),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-180+np.random.uniform(-3.0, 3.0),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=45.6,
+                                                       y=271.5+np.random.uniform(-12.0, -18.0),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-90.0,
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=41.4,
+                                                       y=212.98+np.random.uniform(0.0, 15.0),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=90.0,
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=59.71+np.random.uniform(-5.0, 5.0),
+                                                       y=241.28,
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-0.0,
+                                                       roll=0.0))
+                        ]
+
+        x_lims = [[42.8, 73.0], [42.8, 50.8], [43.8, 47.8]]
+        y_lims = [[234.9, 238.9], [231.9, 238.9], [224.0, 238.9]]
+
+        func_changed = [lambda location: location.x<50.8, lambda location: location.y<231.9, lambda location: location.x>np.inf]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims, func_changed)
+    
+    @classmethod
+    def town2_3(cls):
+        init = carla.Transform(carla.Location(x=180.87, y=105.42+np.random.uniform(-0.5, 0.5), z=0.5),
+                        carla.Rotation(pitch=0.0, yaw=-180+np.random.uniform(-3.0, 3.0), roll=0.0))
+        end = carla.Transform(carla.Location(x=110.87, y=105.42, z=0.0),
+                        carla.Rotation(pitch=0.0, yaw=-180.0, roll=0.0))
+        
+        junc_ids = []
+        junc_movement = []
+
+        orientation = 'N'
+
+        spawn_points = [
+                        carla.Transform(carla.Location(x=180.87+np.random.uniform(-30.0, -6.0),
+                                                       y=105.42+np.random.uniform(-0.5, 0.5),
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=-180+np.random.uniform(-3.0, 3.0),
+                                                       roll=0.0)),
+                        carla.Transform(carla.Location(x=131.69+np.random.uniform(-10.0, 25.0),
+                                                       y=109.4,
+                                                       z=0.5),
+                                        carla.Rotation(pitch=0.0,
+                                                       yaw=0.0,
+                                                       roll=0.0))
+                        ]
+        
+        x_lims = [[108.0, 182.0]]
+        y_lims = [[103.42, 107.42]]
+        func_changed = [lambda location: location.y>np.inf]
+
+        return cls(init, end, orientation, junc_ids, junc_movement, spawn_points, x_lims, y_lims, func_changed)
+
+    @classmethod
     def get_possibilities(cls, name):
         if name == 'Town01':
             return [cls.town1_1, cls.town1_2, cls.town1_3]
         elif name == 'Town02':
-            return []
+            return [cls.town2_1, cls.town2_2, cls.town2_3]
         else:
             raise NotImplementedError()
         
@@ -453,7 +578,7 @@ class CarlaEnv:
             reward += -3*(1-(1/10*kmh)**beta)
 
         #Steer differ from movement
-        factor = 10.
+        factor = 1.
         min_steer = 0.1
         if self.current_movement == 0 and kmh > 0:
             # if act[0] < -min_steer:
@@ -553,7 +678,8 @@ class CarlaEnv:
         cam_bp.set_attribute('fov', str(self.fov))
         cam_bp.set_attribute('sensor_tick', str(self.tick))
 
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y , z=config.CAM_POS_Z),
+                                      carla.Rotation(pitch=config.CAM_PITCH, yaw=config.CAM_YAW, roll=config.CAM_ROLL))
         sensor = self.world.spawn_actor(cam_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 
@@ -566,7 +692,8 @@ class CarlaEnv:
         cam_bp.set_attribute('fov', str(self.fov))
         cam_bp.set_attribute('sensor_tick', str(self.tick))
 
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y , z=config.CAM_POS_Z),
+                                      carla.Rotation(pitch=config.CAM_PITCH, yaw=config.CAM_YAW, roll=config.CAM_ROLL))
         sensor = self.world.spawn_actor(cam_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 
@@ -579,7 +706,8 @@ class CarlaEnv:
         cam_bp.set_attribute('fov', str(self.fov))
         cam_bp.set_attribute('sensor_tick', str(self.tick))
 
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y , z=config.CAM_POS_Z),
+                                      carla.Rotation(pitch=config.CAM_PITCH, yaw=config.CAM_YAW, roll=config.CAM_ROLL))
         sensor = self.world.spawn_actor(cam_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 
@@ -587,7 +715,7 @@ class CarlaEnv:
 
     def set_collision_sensor(self):
         col_bp = self.blueprint_library.find('sensor.other.collision')
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y, z=config.CAM_POS_Z))
         sensor = self.world.spawn_actor(col_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 
@@ -597,7 +725,7 @@ class CarlaEnv:
         obs_bp = self.blueprint_library.find('sensor.other.obstacle')
         obs_bp.set_attribute('distance', '10')
         obs_bp.set_attribute('sensor_tick', str(self.tick))
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y, z=config.CAM_POS_Z))
         sensor = self.world.spawn_actor(obs_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 
@@ -605,7 +733,7 @@ class CarlaEnv:
 
     def set_lane_invasion_sensor(self):
         obs_bp = self.blueprint_library.find('sensor.other.lane_invasion')
-        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, z=config.CAM_POS_Z))
+        spawn_point = carla.Transform(carla.Location(x=config.CAM_POS_X, y=config.CAM_POS_Y, z=config.CAM_POS_Z))
         sensor = self.world.spawn_actor(obs_bp, spawn_point, attach_to=self.ego_vehicle)
         self.sensors.append(sensor)
 

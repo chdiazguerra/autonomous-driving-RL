@@ -145,7 +145,7 @@ class PolicyNetwork(nn.Module):
 class SACAgent:
     def __init__(self, obs_dim=260, nb_actions=2, device='cpu', lr=1e-3, alpha=0.2,
                  batch_size=64, gamma=0.99, tau=0.005, buffer_size=10000, action_clip=(-1,1),
-                 collision_percentage=0.2, sch_gamma = 0.9, sch_steps=500):
+                 collision_percentage=0.2, sch_gamma = 0.9, sch_steps=500, reward_scale=1.0):
         
         self.device = device
 
@@ -171,11 +171,12 @@ class SACAgent:
         self.tau = tau
         self.alpha = alpha
         self.action_clip = action_clip
+        self.reward_scale = reward_scale
 
         self.collision_percentage = collision_percentage
         self.batch_size = batch_size
-        self.buffer = ReplayBuffer(buffer_size, self.device)
-        self.buffer_collision = ReplayBuffer(buffer_size, self.device)
+        self.buffer = ReplayBuffer(buffer_size)
+        self.buffer_collision = ReplayBuffer(buffer_size)
 
         #Training variables
         self.tr_step = 0
@@ -259,7 +260,7 @@ class SACAgent:
         value_loss = F.mse_loss(value, target_value)
 
         with torch.no_grad():
-            target_q = rewards + self.gamma * self.value_target_network(next_states, next_comms) * (1 - dones)
+            target_q = self.reward_scale*rewards + self.gamma * self.value_target_network(next_states, next_comms) * (1 - dones)
 
         q1 = self.q_value_network1(states, comms, actions)
         q2 = self.q_value_network2(states, comms, actions)
@@ -275,17 +276,17 @@ class SACAgent:
 
         self.value_opt.zero_grad()
         value_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 5e-3)
+        # torch.nn.utils.clip_grad_norm_(self.value_network.parameters(), 5e-3)
         self.value_opt.step()
 
         self.q_value1_opt.zero_grad()
         q1_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_value_network1.parameters(), 5e-3)
+        # torch.nn.utils.clip_grad_norm_(self.q_value_network1.parameters(), 5e-3)
         self.q_value1_opt.step()
 
         self.q_value2_opt.zero_grad()
         q2_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.q_value_network2.parameters(), 5e-3)
+        # torch.nn.utils.clip_grad_norm_(self.q_value_network2.parameters(), 5e-3)
         self.q_value2_opt.step()
 
         if soft_update:
@@ -301,4 +302,10 @@ class SACAgent:
     def save(self, save_path):
         with open(save_path, 'wb') as f:
             pickle.dump(self, f)
+
+    def save_actor(self, save_path):
+        torch.save(self.policy_network.state_dict(), save_path)
+
+    def load_actor(self, load_path):
+        self.policy_network.load_state_dict(torch.load(load_path))
     

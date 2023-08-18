@@ -174,7 +174,7 @@ if __name__=='__main__':
             agent = pickle.load(f)
     else:
         agent = DDPGAgent(obs_dim=260, nb_actions=2, device='cpu', lr_actor=1e-4, lr_critic=1e-3,
-                 batch_size=config.DDPG_BATCH_SIZE, gamma=0.95, tau=0.005, clip_norm=5e-3, buffer_size=20000, action_clip=(-1,1),
+                 batch_size=config.DDPG_BATCH_SIZE, gamma=0.95, tau=0.005, clip_norm=5e-3, buffer_size=40000, action_clip=(-1,1),
                  collision_percentage=0.2, noise_sigma=config.DDPG_NOISE_SIGMA, noise_decay=1/300, sch_gamma = 0.9,
                  sch_steps=config.DDPG_SCH_STEPS, use_expert_data=config.DDPG_USE_EXPERT_DATA, expert_percentage=0.25,
                  lambda_bc=0.5, use_env_model=config.DDPG_USE_ENV_MODEL, lambda_env=0.2,

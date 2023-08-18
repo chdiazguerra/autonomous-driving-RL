@@ -18,7 +18,7 @@ class OUNoise:
 
     def reset(self):
         self.x_prev = self.x0 if self.x0 is not None else np.zeros_like(self.mu)
-        self.sigma = max(self.sigma-self.noise_decay, 0.05)
+        self.sigma = max(self.sigma-self.noise_decay, 0.01)
 
     def __repr__(self):
         return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu, self.sigma)
